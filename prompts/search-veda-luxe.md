@@ -9,7 +9,7 @@ THIS IS A SEARCH-ONLY RUN. Do NOT queue outreach, send any DM or email, post mes
    - follower range: the 10 ideal profiles span 7.5k-25.2k, so use roughly 5k-40k. State this as an assumption.
    - weights: engagement counts more than usual (the brief's non-negotiable is engagement authenticity): niche 3, followers 1, engagement 3, collab 1, location 2.
    - offer: from section 6 of the brief (product seeding first, then a paid reel + story bundle, affiliate code 10-15%, co-branded ritual kit) and the persona.
-   - emailSubject: "Veda Luxe x {{name}} - ritual-first collaboration". No dmTemplate (none was given). No maxRate (the brief has no budget).
+   - No dmTemplate (none was given). No maxRate (the brief has no budget).
 2. Add the 10 ideal influencer profiles from section 2 of the brief to the database (POST /api/creators, source "client-brief", handle + followers + a note
    "ideal profile from client brief"; leave everything you can't see blank). They are reference creators and should appear in the search.
 3. POST /api/search with the client. Hunt rule: if fewer than 15 creators score above 80 (the response's `shortfall` > 0), hunt that many NEW creators

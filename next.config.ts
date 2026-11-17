@@ -6,7 +6,7 @@ const csp = [
 ].join("; ");
 
 export default {
-  serverExternalPackages: ["mongodb", "nodemailer"],
+  serverExternalPackages: ["mongodb"],
   poweredByHeader: false,
   async headers() {
     return [{

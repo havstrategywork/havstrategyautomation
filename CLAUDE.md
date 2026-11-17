@@ -13,14 +13,13 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 - `POST /api/creators`: upsert one creator or an array. Safe to re-push (dedupes on `igHandle`/`email`).
   Fields: `name, igHandle|igUrl, email, niches[], followers, engagementRate (%), platforms[], collab{count,rating 0-5,notes}, notes, source`.
 - `PATCH /api/creators/:id`: update fields.
-- `POST /api/outreach` `{creatorId, clientId?, igMessage?, emailSubject?, emailBody?}`: queues IG and/or email. Skips channels already queued/sent for that creator.
+- `POST /api/outreach` `{creatorId, clientId?, igMessage?}`: queues an IG DM. Skips creators already queued/sent. **Email outreach is switched off.**
 - `GET /api/outreach/next`: queued IG DMs for now, already limited to today's remaining cap (45/day).
 - `POST /api/outreach/:id/sent` `{ok:true}` or `{ok:false,error}`: report the result. Returns 429 once the cap is hit; stop immediately.
-- `POST /api/outreach/send-emails`: sends queued emails via Gmail SMTP (cap `EMAIL_DAILY_CAP`).
 
 ## Hunting new creators
 1. `GET /api/clients` to see what's wanted.
-2. Use web search / Claude in Chrome to find creators matching the niche. For each, collect: IG handle, follower count, rough engagement rate, niches, and a **public** contact email (bio, linked site, Linktree, YouTube About page). Never guess or fabricate emails or numbers. Leave a field out if you can't verify it.
+2. Use web search / Claude in Chrome to find creators matching the niche. For each, collect: IG handle, follower count, rough engagement rate, niches, and (as contact info only) a **public** email if shown (bio, linked site, Linktree, YouTube About page). Never guess or fabricate emails or numbers. Leave a field out if you can't verify it.
 3. `POST /api/creators` with `source: "claude-hunt"` and short `notes` on why they fit.
 
 ## Sending IG DMs (Claude in Chrome)
@@ -34,8 +33,8 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 
 ## Writing messages
 **If the client has a `dmTemplate` (the user's pasted message), never write your own first message.** Queue with `POST /api/outreach
-{creatorId, clientId, useTemplate:true, name}`; the server fills only `{{name}}`/`{{handle}}` and sends the same text on IG and email.
-Only when there is no template: personalise from the creator's `notes` and past `collab` info. Keep DMs under ~400 chars and say who we are and the ask clearly. Emails get a subject line and an opt-out line.
+{creatorId, clientId, useTemplate:true, name}`; the server fills only `{{name}}`/`{{handle}}` and sends it as the IG DM.
+Only when there is no template: personalise from the creator's `notes` and past `collab` info. Keep DMs under ~400 chars and say who we are and the ask clearly.
 
 ## Creator fields (match the team sheet)
 `igHandle` (or `igUrl`), `name`, `followers`, `igCategory`, `location`, `email`, `notes` (from bio), `status`

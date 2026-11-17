@@ -16,7 +16,7 @@ async function add(f: FormData) {
     name: String(f.get("name")),
     niches: split(f.get("niches")), related: split(f.get("related")), locations: split(f.get("locations")),
     ...(String(f.get("budget")).trim() && { maxRate: cleanMoney(f.get("budget"), "budget") }),
-    minFollowers: n("min", 0), maxFollowers: n("max", 1e9), notes: String(f.get("notes")), offer: String(f.get("offer") ?? ""), dmTemplate: String(f.get("dmTemplate") ?? ""), emailSubject: String(f.get("emailSubject") ?? ""),
+    minFollowers: n("min", 0), maxFollowers: n("max", 1e9), notes: String(f.get("notes")), offer: String(f.get("offer") ?? ""), dmTemplate: String(f.get("dmTemplate") ?? ""),
     weights: { niche: n("wNiche", 3), followers: n("wFollowers", 2), engagement: n("wEngagement", 2), collab: n("wCollab", 1), location: n("wLocation", 2) },
   });
   revalidatePath("/clients");
@@ -77,7 +77,6 @@ export default async function Clients() {
           </fieldset>
           <label>Notes / brief<textarea name="notes" rows={3} /></label>
           <label>Message to send (use {"{{name}}"} where the creator's name goes)<textarea name="dmTemplate" rows={5} /></label>
-          <label>Email subject (when the same text is emailed)<input name="emailSubject" /></label>
           <label>Offer brief for replies (product, deliverables, payment terms, what we cannot promise)<textarea name="offer" rows={4} /></label>
           <div><button>Add client</button></div>
         </form>

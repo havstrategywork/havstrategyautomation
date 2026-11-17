@@ -39,7 +39,6 @@ export type Client = {
   tierRates?: Record<string, string>; // per-tier cap, keyed by tier name (Nano, Micro, Mid-tier, Macro, Mega), e.g. { Nano: "10k INR" }; overrides maxRate for that tier
   maxRate?: string; // budget text with currency, e.g. "20k INR"; budget per creator: search excludes creators quoting above it, and Claude can never offer/agree above it
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
-  emailSubject?: string; // subject used when the same text is emailed
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
   maxFollowers: number;
@@ -116,7 +115,6 @@ export async function db() {
 }
 
 export const IG_CAP = Number(process.env.IG_DAILY_CAP ?? 45);
-export const EMAIL_CAP = Number(process.env.EMAIL_DAILY_CAP ?? 100);
 export const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0));
 
 export async function sentToday(channel: "ig" | "email") {
@@ -124,16 +122,15 @@ export async function sentToday(channel: "ig" | "email") {
   return outreach.countDocuments({ channel, status: "sent", sentAt: { $gte: startOfToday() } });
 }
 
-// Test-mode guard. If IG_ALLOWLIST / EMAIL_ALLOWLIST is set, nothing is delivered to anyone else.
-// Enforced server-side in /api/outreach/next, /api/outreach/:id/sent and the email sender, so a prompt can't bypass it.
+// Test-mode guard. If IG_ALLOWLIST is set, nothing is delivered to anyone else.
+// Enforced server-side in /api/outreach/next, and /api/outreach/:id/sent, so a prompt can't bypass it.
 const allowList = (v?: string) => (v ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
 export const igAllowed = (handle?: string) => { const l = allowList(process.env.IG_ALLOWLIST); return !l.length || (!!handle && l.includes(handle.toLowerCase())); };
 // Ownership guard (two people share the creator database, even for the same client). If OWNER is set (e.g. OWNER=akshit), this app
 // only touches creators whose `owner` is that name. Queueing a DM claims an unowned creator for OWNER; someone else's creator is refused.
-// Enforced server-side in outreach/messages/conversations/email routes, so a prompt can't bypass it.
+// Enforced server-side in outreach/messages/conversations routes, so a prompt can't bypass it.
 export const ownerName = () => (process.env.OWNER ?? "").trim().toLowerCase();
 export async function inScope(c?: { owner?: string } | null, allowUnowned = false) {
   const me = ownerName();
   return !me || (c?.owner ? c.owner === me : allowUnowned);
 }
-export const emailAllowed = (email?: string) => { const l = allowList(process.env.EMAIL_ALLOWLIST); return !l.length || (!!email && l.includes(email.toLowerCase())); };

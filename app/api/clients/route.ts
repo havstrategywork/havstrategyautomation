@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
   } catch (e) { return Response.json({ error: (e as Error).message }, { status: 400 }); }
   if (b.notes != null) set.notes = String(b.notes);
-  for (const k of ["offer", "dmTemplate", "emailSubject"]) if (b[k] != null) set[k] = String(b[k]);
+  for (const k of ["offer", "dmTemplate"]) if (b[k] != null) set[k] = String(b[k]);
   for (const [k, v] of Object.entries(b.weights ?? {})) set[`weights.${k}`] = Number(v);
 
   const existing = await clients.findOne({ name: new RegExp(`^${String(b.name).trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") });
