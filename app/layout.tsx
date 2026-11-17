@@ -1,6 +1,7 @@
 import "./globals.css";
 import NavLink from "@/components/NavLink";
 import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
+import BriefChat from "@/components/BriefChat";
 import { currentUser } from "@/lib/session";
 
 export const metadata = { title: "Outreach" };
@@ -34,6 +35,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
               </div>
             </aside>
             <main className="main">{children}</main>
+            <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />
           </div>
         )}
       </body>
