@@ -4,8 +4,14 @@ import { queueFirstDm } from "@/lib/outreach";
 
 export async function GET(req: Request) {
   const bad = unauthorized(req); if (bad) return bad;
-  const status = new URL(req.url).searchParams.get("status");
-  return Response.json(await (await db()).outreach.find(status ? { status: status as Outreach["status"] } : {}).sort({ createdAt: -1 }).limit(200).toArray());
+  const u = new URL(req.url).searchParams;
+  const status = u.get("status");
+  const page = u.get("page") ? Number(u.get("page")) : undefined;
+  const limit = u.get("limit") ? Number(u.get("limit")) : (page ? 15 : 200);
+  const filter = status ? { status: status as Outreach["status"] } : {};
+  const query = (await db()).outreach.find(filter).sort({ createdAt: -1 });
+  if (page) query.skip((page - 1) * limit);
+  return Response.json(await query.limit(limit).toArray());
 }
 
 // body: { creatorId, clientId?, igMessage?, useTemplate?, name? }. Queues a first IG DM (rules in lib/outreach.ts). Email outreach is off.

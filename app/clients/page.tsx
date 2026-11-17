@@ -3,7 +3,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { TIERS } from "@/lib/fields";
 import { cleanMoney } from "@/lib/money";
-import { PageHead } from "@/components/ui";
+import { PageHead, Pagination } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -25,16 +25,27 @@ async function add(f: FormData) {
 const Chips = ({ items, soft }: { items?: string[]; soft?: boolean }) => items?.length ? <div className="chips">{items.map((i) => <span key={i} className={`chip${soft ? " soft" : ""}`}>{i}</span>)}</div> : <span className="muted">—</span>;
 const compact = (n: number) => (n >= 1e9 ? "no limit" : n >= 1e6 ? `${n / 1e6}M` : n >= 1e3 ? `${n / 1e3}k` : String(n));
 
-export default async function Clients() {
+export default async function Clients({ searchParams }: { searchParams?: Promise<Record<string, string>> }) {
+  const sp = (await searchParams) ?? {};
   const { clients, creators } = await db();
-  const list = await clients.find().toArray();
+  const list = await clients.find().sort({ _id: -1 }).toArray();
+
+  const PAGE_SIZE = 15;
+  const total = list.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, Number(sp.page) || 1), totalPages);
+  const pagedList = list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   const counts = new Map((await creators.aggregate<{ _id: unknown; n: number }>([{ $unwind: "$suggestedVia" }, { $group: { _id: "$suggestedVia", n: { $sum: 1 } } }]).toArray()).map((r) => [String(r._id), r.n]));
 
   return (
     <>
-      <PageHead title="Clients" sub="Each client is a requirement. Creators are scored against it." />
+      <PageHead
+        title="Clients"
+        sub={`Each client is a requirement. Creators are scored against it.${total > 0 ? ` · ${total} client${total === 1 ? "" : "s"}` : ""}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}`}
+      />
       <div className="grid cols">
-        {list.map((c) => (
+        {pagedList.map((c) => (
           <div className="card form" key={String(c._id)}>
             <div className="row spread"><h2 style={{ margin: 0 }}>{c.name}</h2><Link className="small" href={`/creators?clientId=${c._id}`}>Ranked creators →</Link></div>
             <div><h3>Niches</h3><Chips items={c.niches} /></div>
@@ -54,8 +65,10 @@ export default async function Clients() {
             <div><h3>Offer brief (what Claude answers from)</h3><p className="small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.offer || <span className="muted">None yet. Claude has nothing to answer product or deal questions from, so it will escalate them.</span>}</p></div>
           </div>
         ))}
-        {!list.length && <div className="card empty">No clients yet. Add one below, or give Claude a requirement.</div>}
+        {!total && <div className="card empty">No clients yet. Add one below, or give Claude a requirement.</div>}
       </div>
+
+      <Pagination page={currentPage} total={total} pageSize={PAGE_SIZE} basePath="/clients" params={sp} itemLabel="clients" />
 
       <details className="card" style={{ marginTop: "1rem" }}>
         <summary>Add a client requirement</summary>

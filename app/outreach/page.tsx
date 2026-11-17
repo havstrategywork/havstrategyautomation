@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { Avatar, Badge, PageHead, ago } from "@/components/ui";
+import { Avatar, Badge, PageHead, Pagination, ago } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,19 @@ export default async function Outreach({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const { outreach, creators } = await db();
   const filter = { channel: "ig" as const, ...(sp.status && { status: sp.status as "queued" | "sent" | "failed" }) };
-  const rows = await outreach.find(filter).sort({ createdAt: -1 }).limit(200).toArray();
+
+  const PAGE_SIZE = 15;
+  const total = await outreach.countDocuments(filter);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, Number(sp.page) || 1), totalPages);
+
+  const rows = await outreach
+    .find(filter)
+    .sort({ createdAt: -1 })
+    .skip((currentPage - 1) * PAGE_SIZE)
+    .limit(PAGE_SIZE)
+    .toArray();
+
   const byId = new Map((await creators.find({ _id: { $in: rows.map((r) => r.creatorId) } }).toArray()).map((c) => [String(c._id), c]));
   const tab = (label: string, q: Record<string, string>) => {
     const on = (q.status ?? "") === (sp.status ?? "");
@@ -17,7 +29,10 @@ export default async function Outreach({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <PageHead title="Outreach" sub="Instagram DMs, sent by Claude via Chrome (see CLAUDE.md)." />
+      <PageHead
+        title="Outreach"
+        sub={`Instagram DMs, sent by Claude via Chrome (see CLAUDE.md) · ${total} message${total === 1 ? "" : "s"}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}`}
+      />
       <div className="row" style={{ marginBottom: "1rem" }}>
         {tab("All", {})}{tab("Queued", { status: "queued" })}{tab("Sent", { status: "sent" })}{tab("Failed", { status: "failed" })}
       </div>
@@ -36,10 +51,12 @@ export default async function Outreach({ searchParams }: { searchParams: Promise
                 </tr>
               );
             })}
-            {!rows.length && <tr><td colSpan={4}><div className="empty">Nothing here yet.</div></td></tr>}
+            {!total && <tr><td colSpan={4}><div className="empty">Nothing here yet.</div></td></tr>}
           </tbody>
         </table>
       </div>
+
+      <Pagination page={currentPage} total={total} pageSize={PAGE_SIZE} basePath="/outreach" params={sp} itemLabel="messages" />
     </>
   );
 }

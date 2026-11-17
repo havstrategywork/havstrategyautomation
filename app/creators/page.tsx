@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { listCreators, upsertCreator } from "@/lib/queries";
 import { parseCsv } from "@/lib/csv";
 import { STATUSES, TIERS, tierOf } from "@/lib/fields";
-import { Avatar, Badge, PageHead, Score } from "@/components/ui";
+import { Avatar, Badge, PageHead, Pagination, Score } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -40,9 +40,15 @@ export default async function Creators({ searchParams }: { searchParams: Promise
   const withClient = rows.length > 0 && rows[0].score !== null;
   const activeClient = clientList.find((c) => String(c._id) === sp.clientId);
 
+  const PAGE_SIZE = 15;
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, Number(sp.page) || 1), totalPages);
+  const pagedRows = rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   return (
     <>
-      <PageHead title="Creators" sub={`${rows.length} shown${activeClient ? ` · ranked for ${activeClient.name}` : ""}`}>
+      <PageHead title="Creators" sub={`${total} creator${total === 1 ? "" : "s"}${activeClient ? ` · ranked for ${activeClient.name}` : ""}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}`}>
         <a className="btn ghost" href="/creators/export">Export CSV</a>
       </PageHead>
       {sp.msg && <div className="notice">{sp.msg}</div>}
@@ -74,7 +80,7 @@ export default async function Creators({ searchParams }: { searchParams: Promise
         <table>
           <thead><tr>{withClient && <th>Fit</th>}<th>Creator</th><th className="num">Followers</th><th>Category / location</th><th>Reach</th><th>Status</th><th>DM sent</th><th className="num">Suggested</th><th className="num">Quoted / agreed</th></tr></thead>
           <tbody>
-            {rows.map((c) => (
+            {pagedRows.map((c) => (
               <tr key={String(c._id)}>
                 {withClient && <td><Score n={c.score!} /></td>}
                 <td><div className="who"><Avatar name={c.name} /><div className="two"><Link href={`/creators/${c._id}`}><b>{c.name}</b></Link><small>{c.igHandle ? `@${c.igHandle}` : "no handle"}</small></div></div></td>
@@ -87,10 +93,12 @@ export default async function Creators({ searchParams }: { searchParams: Promise
                 <td className="num">{c.quotedRate ?? "—"} / {c.agreedRate ?? "—"}</td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={9}><div className="empty">No creators match these filters.</div></td></tr>}
+            {!total && <tr><td colSpan={withClient ? 10 : 9}><div className="empty">No creators match these filters.</div></td></tr>}
           </tbody>
         </table>
       </div>
+
+      <Pagination page={currentPage} total={total} pageSize={PAGE_SIZE} basePath="/creators" params={sp} itemLabel="creators" />
     </>
   );
 }

@@ -3,7 +3,7 @@ import { db, type BriefDoc } from "@/lib/db";
 import { mine } from "@/lib/briefs";
 import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
-import { Avatar, Badge, PageHead, Score, ago } from "@/components/ui";
+import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
 import { approveBrief, archiveBrief, findMore } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +13,22 @@ const LABEL: Record<BriefDoc["status"], string> = {
   approved: "Approved, sending", failed: "Cowork couldn't finish", archived: "Archived",
 };
 
-export default async function Campaigns({ searchParams }: { searchParams: Promise<{ err?: string; all?: string }> }) {
-  const { err, all } = await searchParams;
+export default async function Campaigns({ searchParams }: { searchParams: Promise<{ err?: string; all?: string; page?: string }> }) {
+  const { err, all, page: pageParam } = await searchParams;
   const { briefs, creators, clients } = await db();
-  const list = await briefs.find({ ...mine(), ...(all ? {} : { status: { $ne: "archived" } }) }).sort({ updatedAt: -1 }).limit(50).toArray();
+  const query = { ...mine(), ...(all ? {} : { status: { $ne: "archived" as const } }) };
+
+  const PAGE_SIZE = 15;
+  const total = await briefs.countDocuments(query);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, Number(pageParam) || 1), totalPages);
+
+  const list = await briefs
+    .find(query)
+    .sort({ updatedAt: -1 })
+    .skip((currentPage - 1) * PAGE_SIZE)
+    .limit(PAGE_SIZE)
+    .toArray();
   const ids = list.flatMap((b) => b.shortlist.map((s) => s.creatorId));
   const people = new Map((await creators.find({ _id: { $in: ids } }).toArray()).map((c) => [String(c._id), c]));
   const cls = new Map((await clients.find({ _id: { $in: list.flatMap((b) => (b.clientId ? [b.clientId] : [])) } }).toArray()).map((c) => [String(c._id), c]));
@@ -25,7 +37,10 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHead title="Campaigns" sub="Briefs from the New brief chat. Cowork finds creators; you approve; the DMs go out on schedule.">
+      <PageHead
+        title="Campaigns"
+        sub={`Briefs from the New brief chat. Cowork finds creators; you approve; the DMs go out on schedule.${total > 0 ? ` · ${total} campaign${total === 1 ? "" : "s"}` : ""}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}`}
+      >
         <Link className="btn ghost" href={all ? "/campaigns" : "/campaigns?all=1"}>{all ? "Hide archived" : "Show archived"}</Link>
       </PageHead>
       {err && <div className="notice" role="alert" style={{ borderLeftColor: "var(--bad)" }}>{err}</div>}
@@ -104,6 +119,8 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
           </section>
         );
       })}
+
+      <Pagination page={currentPage} total={total} pageSize={PAGE_SIZE} basePath="/campaigns" params={{ ...(err && { err }), ...(all && { all }) }} itemLabel="campaigns" />
     </>
   );
 }

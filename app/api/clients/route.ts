@@ -4,7 +4,14 @@ import { upsertClient } from "@/lib/clients";
 
 export async function GET(req: Request) {
   const bad = unauthorized(req); if (bad) return bad;
-  return Response.json(await (await db()).clients.find().toArray());
+  const u = new URL(req.url).searchParams;
+  const page = u.get("page") ? Number(u.get("page")) : undefined;
+  const limit = u.get("limit") ? Number(u.get("limit")) : undefined;
+  const query = (await db()).clients.find();
+  if (page && limit) {
+    return Response.json(await query.skip((page - 1) * limit).limit(limit).toArray());
+  }
+  return Response.json(await query.toArray());
 }
 
 // Upserts by name (case-insensitive), changing only the fields you send. Safe to call for every new requirement.

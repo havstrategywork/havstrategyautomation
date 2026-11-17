@@ -1,4 +1,5 @@
 import ThemeToggle from "@/components/ThemeToggle";
+import { Icon } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +11,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
     <main className="auth">
       <div className="auth-top"><ThemeToggle /></div>
       <form method="post" action="/login/submit" className="card form">
-        <div className="brand"><div className="logo">O</div><div><b>Outreach</b><span>Creator CRM</span></div></div>
+        <div className="brand"><div className="logo"><Icon name="spark" /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
         <div>
-          <h1 style={{ fontSize: 22 }}>Welcome back</h1>
+          <h1>Welcome <em>back</em></h1>
           <p className="muted small" style={{ margin: ".3rem 0 0" }}>Sign in to manage creators and outreach.</p>
         </div>
         {e && MSG[e] && <div className="notice" role="alert" style={{ margin: 0, borderLeftColor: "var(--bad)" }}>{MSG[e]}</div>}

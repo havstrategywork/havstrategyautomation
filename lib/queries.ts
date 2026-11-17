@@ -10,7 +10,7 @@ export const handleOf = (s?: string) =>
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const rx = (s: string, exact = false) => new RegExp(exact ? `^${esc(s)}$` : esc(s), "i");
 
-export async function listCreators(o: { clientId?: string; niche?: string; q?: string; minScore?: number; status?: string; tier?: string }) {
+export async function listCreators(o: { clientId?: string; niche?: string; q?: string; minScore?: number; status?: string; tier?: string; page?: number; limit?: number }) {
   const { creators, clients } = await db();
   const filter: Record<string, unknown> = {};
   if (o.niche) filter.niches = rx(o.niche, true);
@@ -19,7 +19,12 @@ export async function listCreators(o: { clientId?: string; niche?: string; q?: s
   const rows = (await creators.find(filter).limit(1000).toArray()).filter((c) => !o.tier || tierOf(c.followers) === o.tier);
   const client = o.clientId && ObjectId.isValid(o.clientId) ? await clients.findOne({ _id: new ObjectId(o.clientId) }) : null;
   const out = rows.map((c) => ({ ...c, score: client ? score(c, client) : null }));
-  return client ? out.filter((c) => c.score! >= (o.minScore ?? 0)).sort((a, b) => b.score! - a.score!) : out;
+  const sorted = client ? out.filter((c) => c.score! >= (o.minScore ?? 0)).sort((a, b) => b.score! - a.score!) : out;
+  if (o.page && o.limit) {
+    const start = (o.page - 1) * o.limit;
+    return sorted.slice(start, start + o.limit);
+  }
+  return sorted;
 }
 
 const STR = ["name", "phone", "contactSource", "igCategory", "location", "notes", "response", "outreachNotes"];
