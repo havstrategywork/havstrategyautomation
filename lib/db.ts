@@ -1,0 +1,139 @@
+import { MongoClient, ObjectId } from "mongodb";
+
+export type Creator = {
+  _id?: ObjectId;
+  name: string;
+  igHandle?: string;
+  email?: string;
+  niches: string[];
+  followers: number;
+  engagementRate?: number; // percent, e.g. 3.2
+  platforms?: string[];
+  collab: { count: number; rating: number; notes: string }; // rating 0-5
+  notes: string; // "Notes (from bio)"
+  source: string; // how the row got in: "manual" | "claude-hunt" | "csv" | ...
+  createdAt: Date;
+  // sheet columns. Tier and Times Suggested are derived (see lib/fields.ts), never stored.
+  igCategory?: string;
+  location?: string;
+  phone?: string;
+  contactSource?: string; // where the email/phone came from
+  suggestedVia?: ObjectId[]; // client ids
+  owner?: string; // which person's outreach this creator belongs to (see OWNER); set when a DM is queued
+  status?: string; // one of STATUSES; missing = "New"
+  dmSentAt?: Date;
+  response?: string;
+  quotedRate?: string; // money as text with currency, e.g. "10k INR" (see lib/money.ts)
+  agreedRate?: string;
+  outreachNotes?: string;
+  lastChecked?: Date;
+  followUpSentAt?: Date;
+  needsHuman?: { reason: string; at: Date }; // Claude stops replying until a human resolves this
+};
+export type Client = {
+  _id?: ObjectId;
+  name: string;
+  niches: string[]; // core niches the client wants
+  related?: string[]; // looser/adjacent terms (e.g. "gym", "workout"): partial niche credit
+  locations?: string[]; // preferred locations (substring match on creator.location)
+  tierRates?: Record<string, string>; // per-tier cap, keyed by tier name (Nano, Micro, Mid-tier, Macro, Mega), e.g. { Nano: "10k INR" }; overrides maxRate for that tier
+  maxRate?: string; // budget text with currency, e.g. "20k INR"; budget per creator: search excludes creators quoting above it, and Claude can never offer/agree above it
+  dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
+  emailSubject?: string; // subject used when the same text is emailed
+  offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
+  minFollowers: number;
+  maxFollowers: number;
+  weights: { niche: number; followers: number; engagement: number; collab: number; location?: number };
+  notes: string;
+};
+export type Message = {
+  _id?: ObjectId;
+  creatorId: ObjectId;
+  direction: "in" | "out";
+  by?: "claude" | "human"; // out only: who wrote it. "human" = typed by a person directly in Instagram
+  text: string;
+  at: Date;
+  status?: "queued" | "sent" | "failed"; // out only
+  error?: string;
+  price?: string; // out only, any price stated, e.g. "15k INR": any price stated in the message, so the ceiling can be enforced server-side
+};
+// One document (_id "state"): kill switch, run lock, heartbeat.
+export type Control = {
+  _id: string;
+  paused?: { reason: string; at: Date }; // set by Claude on a block/challenge; only a human can clear it (dashboard button)
+  run?: { id: string; kind: string; startedAt: Date }; // active run; considered dead after 20 min
+  lastRun?: { kind: string; startedAt: Date; endedAt: Date; ok: boolean; note?: string };
+};
+export type Outreach = {
+  _id?: ObjectId;
+  creatorId: ObjectId;
+  clientId?: ObjectId;
+  channel: "ig" | "email";
+  subject?: string;
+  message: string;
+  status: "queued" | "sent" | "failed";
+  error?: string;
+  createdAt: Date;
+  sentAt?: Date;
+};
+
+// Dashboard login. Passwords are scrypt hashes; sessions store only a SHA-256 of the cookie token, so a DB leak can't be replayed.
+export type User = { _id?: ObjectId; username: string; passwordHash: string; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
+export type Session = { _id?: ObjectId; tokenHash: string; userId: ObjectId; createdAt: Date; lastSeen: Date; expiresAt: Date; ip?: string; ua?: string };
+export type LoginAttempt = { _id: string; n: number; resetAt: Date }; // per-IP failed-login counter, expires by itself
+
+// reuse the connection across dev hot reloads
+const g = globalThis as unknown as { _mongo?: Promise<MongoClient>; _idx?: Promise<unknown> };
+const client = (g._mongo ??= new MongoClient(process.env.MONGODB_URI!).connect());
+
+// Unique handle/email, but only for real strings: a null/blank value (cleared field) must not collide.
+// Drops the first-version sparse indexes (igHandle_1/email_1) if they still exist.
+async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
+  const c = d.collection("creators");
+  for (const f of ["igHandle", "email"]) {
+    await c.dropIndex(`${f}_1`).catch(() => {});
+    await c.createIndex({ [f]: 1 }, { unique: true, name: `${f}_uniq`, partialFilterExpression: { [f]: { $type: "string" } } });
+  }
+  await d.collection("users").createIndex({ username: 1 }, { unique: true });
+  await d.collection("sessions").createIndex({ tokenHash: 1 }, { unique: true });
+  await d.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // expired sessions delete themselves
+  await d.collection("loginAttempts").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });
+}
+
+export async function db() {
+  const d = (await client).db();
+  await (g._idx ??= setupIndexes(d));
+  return {
+    creators: d.collection<Creator>("creators"),
+    clients: d.collection<Client>("clients"),
+    outreach: d.collection<Outreach>("outreach"),
+    messages: d.collection<Message>("messages"),
+    control: d.collection<Control>("control"),
+    users: d.collection<User>("users"),
+    sessions: d.collection<Session>("sessions"),
+    loginAttempts: d.collection<LoginAttempt>("loginAttempts"),
+  };
+}
+
+export const IG_CAP = Number(process.env.IG_DAILY_CAP ?? 45);
+export const EMAIL_CAP = Number(process.env.EMAIL_DAILY_CAP ?? 100);
+export const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0));
+
+export async function sentToday(channel: "ig" | "email") {
+  const { outreach } = await db();
+  return outreach.countDocuments({ channel, status: "sent", sentAt: { $gte: startOfToday() } });
+}
+
+// Test-mode guard. If IG_ALLOWLIST / EMAIL_ALLOWLIST is set, nothing is delivered to anyone else.
+// Enforced server-side in /api/outreach/next, /api/outreach/:id/sent and the email sender, so a prompt can't bypass it.
+const allowList = (v?: string) => (v ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
+export const igAllowed = (handle?: string) => { const l = allowList(process.env.IG_ALLOWLIST); return !l.length || (!!handle && l.includes(handle.toLowerCase())); };
+// Ownership guard (two people share the creator database, even for the same client). If OWNER is set (e.g. OWNER=akshit), this app
+// only touches creators whose `owner` is that name. Queueing a DM claims an unowned creator for OWNER; someone else's creator is refused.
+// Enforced server-side in outreach/messages/conversations/email routes, so a prompt can't bypass it.
+export const ownerName = () => (process.env.OWNER ?? "").trim().toLowerCase();
+export async function inScope(c?: { owner?: string } | null, allowUnowned = false) {
+  const me = ownerName();
+  return !me || (c?.owner ? c.owner === me : allowUnowned);
+}
+export const emailAllowed = (email?: string) => { const l = allowList(process.env.EMAIL_ALLOWLIST); return !l.length || (!!email && l.includes(email.toLowerCase())); };

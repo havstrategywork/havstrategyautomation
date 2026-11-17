@@ -1,0 +1,401 @@
+[
+ {
+  "name": "Avanti Deshpande",
+  "igHandle": "nutritionist.avanti",
+  "igUrl": "https://www.instagram.com/nutritionist.avanti/",
+  "followers": 50600,
+  "niches": [
+   "gut health",
+   "nutrition",
+   "hormones",
+   "women's health"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Gut health nutritionist, 25+ yrs, 15k+ clients. Lookalike of tanvinutrition / dr_kia_g (expert-led, gut + hormones).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Pune, Mumbai"
+ },
+ {
+  "name": "Dhvani Shah",
+  "igHandle": "nutritionist_dhvanishah",
+  "igUrl": "https://www.instagram.com/nutritionist_dhvanishah/",
+  "followers": 50800,
+  "niches": [
+   "gut health",
+   "metabolic health",
+   "nutrition"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Metabolic health specialist: fatty liver, gut, metabolic health. Expert-led like Tanvi/Kia. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)"
+ },
+ {
+  "name": "Ridhima Batra",
+  "igHandle": "nutritiondefinedofficial",
+  "igUrl": "https://www.instagram.com/nutritiondefinedofficial/",
+  "followers": 55900,
+  "niches": [
+   "gut health",
+   "nutrition",
+   "pcos",
+   "weight loss"
+  ],
+  "igCategory": "Health & wellness website",
+  "notes": "Nutrition professional: weight loss, diabetes, PCOS, fatty liver, gut health.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Prachi Shah (Clinical Nutritionist)",
+  "igHandle": "shahprachi",
+  "igUrl": "https://www.instagram.com/shahprachi/",
+  "followers": 30200,
+  "niches": [
+   "nutrition",
+   "gut health",
+   "pcos",
+   "fertility"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Clinical nutritionist, mom: PCOS, gut, fertility, baby-led weaning.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Vadodara"
+ },
+ {
+  "name": "Kuntal A. Joisher",
+  "igHandle": "kuntalj",
+  "igUrl": "https://www.instagram.com/kuntalj/",
+  "followers": 29400,
+  "niches": [
+   "nutrition",
+   "fitness",
+   "vegan"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Vegan mountaineer + nutritionist; credibility-led, supplement-literate audience.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Inshaa Arora",
+  "igHandle": "nourish.sweat.rekindle",
+  "igUrl": "https://www.instagram.com/nourish.sweat.rekindle/",
+  "followers": 22900,
+  "niches": [
+   "nutrition",
+   "weight management",
+   "pcos",
+   "thyroid"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Holistic nutritionist and author; Femina Miss India title; PCOS/thyroid/GLP-1 content.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai"
+ },
+ {
+  "name": "Dr. Madhavi Mahindrakar",
+  "igHandle": "nutrifitmadhavi",
+  "igUrl": "https://www.instagram.com/nutrifitmadhavi/",
+  "followers": 12400,
+  "niches": [
+   "nutrition",
+   "hormonal health"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "PhD, hormonal disorders and therapeutic nutrition. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)"
+ },
+ {
+  "name": "Mahima Setia",
+  "igHandle": "nutritionist_mahimasetia",
+  "igUrl": "https://www.instagram.com/nutritionist_mahimasetia/",
+  "followers": 11900,
+  "niches": [
+   "nutrition",
+   "gut health",
+   "weight loss"
+  ],
+  "igCategory": "Health/beauty",
+  "notes": "Fat loss, gut health, thyroid, PCOD diets.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Bengaluru"
+ },
+ {
+  "name": "Avni Kaul (Nutri Activania)",
+  "igHandle": "avnikaul",
+  "igUrl": "https://www.instagram.com/avnikaul/",
+  "followers": 16900,
+  "niches": [
+   "nutrition",
+   "weight loss",
+   "pcos",
+   "thyroid"
+  ],
+  "igCategory": "Health & wellness website",
+  "notes": "Nutritionist and dietitian, 12+ yrs (Max Hospitals, NHS UK).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Sheetal Bansal",
+  "igHandle": "nutromantra",
+  "igUrl": "https://www.instagram.com/nutromantra/",
+  "followers": 16300,
+  "niches": [
+   "gut health",
+   "nutrition",
+   "weight loss"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Bio: heal your gut, high-protein veg plans.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Disha Sanghvi",
+  "igHandle": "nutritionbydisha",
+  "igUrl": "https://www.instagram.com/nutritionbydisha/",
+  "followers": 18700,
+  "niches": [
+   "nutrition",
+   "hormonal health",
+   "weight loss",
+   "pcos"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Clinical nutritionist; sustainable weight loss for busy professionals (matches persona).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Anusha Chhabra",
+  "igHandle": "nourish_your_day",
+  "igUrl": "https://www.instagram.com/nourish_your_day/",
+  "followers": 23100,
+  "niches": [
+   "nutrition",
+   "pcos",
+   "weight loss"
+  ],
+  "igCategory": "Medical & health",
+  "notes": "Clinical dietician, masters in food science and nutrition.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Ruchitaa Maheshwari",
+  "igHandle": "healthymantraofficial",
+  "igUrl": "https://www.instagram.com/healthymantraofficial/",
+  "followers": 17900,
+  "niches": [
+   "nutrition",
+   "pcos",
+   "diabetes",
+   "weight loss"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Dietician / nutritionist; weight loss, PCOS, diabetes.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai"
+ },
+ {
+  "name": "Divija Shah",
+  "igHandle": "divijashah",
+  "igUrl": "https://www.instagram.com/divijashah/",
+  "followers": 61200,
+  "niches": [
+   "nutrition",
+   "weight loss",
+   "gut health"
+  ],
+  "igCategory": "Blogger",
+  "notes": "Clinical and lifestyle nutritionist; slightly above 60k but strong niche fit.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai"
+ },
+ {
+  "name": "Puujaa Kukreja",
+  "igHandle": "puujaakukreja",
+  "igUrl": "https://www.instagram.com/puujaakukreja/",
+  "followers": 5300,
+  "niches": [
+   "nutrition",
+   "lifestyle",
+   "yoga"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Lifestyle nutritionist, works with clients globally. Nano.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)"
+ },
+ {
+  "name": "Upasana Bijoor",
+  "igHandle": "upasanabijoor",
+  "igUrl": "https://www.instagram.com/upasanabijoor/",
+  "followers": 9500,
+  "niches": [
+   "nutrition",
+   "plant-based",
+   "functional nutrition"
+  ],
+  "igCategory": "Health & wellness website",
+  "notes": "Plant-based functional nutritionist and IIN health coach.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Bengaluru"
+ },
+ {
+  "name": "Varun S. (Bodhi Greens)",
+  "igHandle": "bodhigreens",
+  "igUrl": "https://www.instagram.com/bodhigreens/",
+  "followers": 39400,
+  "niches": [
+   "nutrition",
+   "plant-based"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Chef and nutritionist, 1:1 consultations.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Dharamsala"
+ },
+ {
+  "name": "Ekta's Diet Dazzle",
+  "igHandle": "dietdazzle",
+  "igUrl": "https://www.instagram.com/dietdazzle/",
+  "followers": 13500,
+  "niches": [
+   "nutrition",
+   "weight management"
+  ],
+  "igCategory": "Nutritionist",
+  "notes": "Therapeutic diets and customised plans.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Dr. Shreya Sankhe",
+  "igHandle": "dr.shreya.sankhe",
+  "igUrl": "https://www.instagram.com/dr.shreya.sankhe/",
+  "followers": 33800,
+  "niches": [
+   "wellness",
+   "fitness",
+   "doctor-led"
+  ],
+  "igCategory": "Health/beauty",
+  "notes": "MBBS doctor, 'skincare and fitness BS' myth-busting. Doctor co-sign angle; skincare-leaning, check fit.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai"
+ },
+ {
+  "name": "Radhika Karle",
+  "igHandle": "radhikasbalancedbody",
+  "igUrl": "https://www.instagram.com/radhikasbalancedbody/",
+  "followers": 44500,
+  "niches": [
+   "fitness",
+   "pilates",
+   "nutrition"
+  ],
+  "igCategory": "Pilates Studio",
+  "notes": "Pilates master trainer and nutritionist, 7 studios. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai, Hyderabad, Bangalore"
+ },
+ {
+  "name": "Sana Sawhney",
+  "igHandle": "yogigonegreen",
+  "igUrl": "https://www.instagram.com/yogigonegreen/",
+  "followers": 34800,
+  "niches": [
+   "yoga",
+   "wellness",
+   "fitness"
+  ],
+  "igCategory": "Yoga & Wellness",
+  "notes": "Yoga teacher, pre/post-natal and corporate wellness coach. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)"
+ },
+ {
+  "name": "Quarfit",
+  "igHandle": "getfitwithquarfit",
+  "igUrl": "https://www.instagram.com/getfitwithquarfit/",
+  "followers": 8200,
+  "niches": [
+   "fitness",
+   "wellness"
+  ],
+  "igCategory": "Sports & recreation",
+  "notes": "Two sisters, fitness and food-is-fuel content. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai"
+ },
+ {
+  "name": "Priyanshi",
+  "igHandle": "ofpriyanshi",
+  "igUrl": "https://www.instagram.com/ofpriyanshi/",
+  "followers": 26000,
+  "niches": [
+   "fitness",
+   "running",
+   "cooking"
+  ],
+  "igCategory": "Personal",
+  "notes": "Lifts, runs, cooks; already tags a supplement brand (@resetsupps.co) in bio.",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Delhi"
+ },
+ {
+  "name": "Sonal Saboo",
+  "igHandle": "sonalsaboo",
+  "igUrl": "https://www.instagram.com/sonalsaboo/",
+  "followers": 23800,
+  "niches": [
+   "fitness",
+   "bodybuilding",
+   "supplements"
+  ],
+  "igCategory": "Health & wellness website",
+  "notes": "Women's physique athlete; online coaching. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)"
+ },
+ {
+  "name": "Palak Sheth Ghose",
+  "igHandle": "healthfulwithpalak",
+  "igUrl": "https://www.instagram.com/healthfulwithpalak/",
+  "followers": 80300,
+  "niches": [
+   "healthy living",
+   "lifestyle",
+   "coffee"
+  ],
+  "igCategory": "Digital creator",
+  "notes": "Health and lifestyle creator; bigger than target range, kept as a reach option. Tagged @wellbeing.nutrition on Instagram (seen on the brand's Tagged tab, 17 Nov 2026).",
+  "source": "claude-hunt",
+  "contactSource": "Instagram bio (public)",
+  "location": "Mumbai",
+  "email": "hellopalaksheth@gmail.com"
+ }
+]
