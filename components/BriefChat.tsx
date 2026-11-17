@@ -1,12 +1,16 @@
 "use client";
-// Scripted "chat" that collects a campaign brief one question at a time and turns it into a Claude Cowork prompt.
-// No AI runs here: the questions are fixed; Cowork does the thinking once the prompt is pasted. Draft is kept in localStorage.
+// Scripted "chat" that collects a campaign brief one question at a time and submits it to the automation
+// (Campaigns page; Cowork's scheduled "briefs" run picks it up). No AI runs here: the questions are fixed.
+// A copy-paste Cowork prompt is still offered as a manual fallback. The draft is kept in localStorage.
 import { useEffect, useRef, useState } from "react";
 import { TIERS } from "@/lib/fields";
+import Link from "next/link";
 import { buildPrompt, cleanRows, money, tierRange, type Brief, type Row } from "@/lib/brief";
+import { submitBriefAction } from "@/app/campaigns/actions";
 
 const KEY = "briefDraft";
-const blank = (): Brief & { step: number } => ({ step: 0, client: "", products: [{ name: "", about: "" }], rows: [{ tier: "Micro", count: 2, budget: 10000 }], currency: "INR", other: "", message: "" });
+type Draft = Brief & { step: number; followUp: string; sent?: string };
+const blank = (): Draft => ({ step: 0, client: "", products: [{ name: "", about: "" }], rows: [{ tier: "Micro", count: 2, budget: 10000 }], currency: "INR", other: "", message: "", followUp: "" });
 const CURRENCIES = ["INR", "AED", "USD", "EUR", "GBP"];
 const Q = [
   "Hi! Let's put together a campaign brief. What's the client or brand name?",
@@ -14,12 +18,15 @@ const Q = [
   "What creators do you need? Add a row per tier: how many, and the most you'd pay each.",
   "Any other requirements? Location, niche, audience, deliverables, timeline, brands to avoid…",
   "Paste the outreach message to send, word for word. Skip it and Cowork will draft one for your approval.",
+  "If a creator doesn't reply within 3 days, we can send one follow-up in the same chat. Write it here, or skip for none.",
 ];
 
 export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: string }) {
   const [open, setOpen] = useState(false);
   const [b, setB] = useState(blank);
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
   useEffect(() => { try { const s = localStorage.getItem(KEY); if (s) setB({ ...blank(), ...JSON.parse(s) }); } catch {} }, []);
@@ -30,7 +37,7 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
   const setRow = (i: number, p: Partial<Row>) => set({ rows: b.rows.map((r, j) => (j === i ? { ...r, ...p } : r)) });
   const products = b.products.filter((p) => p.name.trim());
   const rows = cleanRows(b.rows);
-  const ok = [b.client.trim() !== "", products.length > 0, rows.length > 0 && rows.length === b.rows.length, true, true][b.step] ?? true;
+  const ok = [b.client.trim() !== "", products.length > 0, rows.length > 0 && rows.length === b.rows.length, true, true, true][b.step] ?? true;
   const next = () => ok && set({ step: b.step + 1 });
 
   const answer = (i: number) => [
@@ -39,7 +46,14 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
     rows.map((r) => `${r.count} × ${r.tier} at up to ${money(r.budget, b.currency)}`).join(" · "),
     b.other.trim() || "None",
     b.message.trim() ? `“${b.message.trim().slice(0, 90)}${b.message.trim().length > 90 ? "…" : ""}”` : "Skipped, Cowork will draft one",
+    b.followUp.trim() ? `“${b.followUp.trim().slice(0, 90)}${b.followUp.trim().length > 90 ? "…" : ""}”` : "No follow-up",
   ][i];
+  const submit = async () => {
+    setBusy(true); setErr("");
+    const r = await submitBriefAction(b).catch((e) => ({ ok: false as const, error: String(e?.message ?? e) }));
+    setBusy(false);
+    if (r.ok) set({ sent: r.id }); else setErr(r.error);
+  };
   const prompt = b.step >= Q.length ? buildPrompt(b, appUrl || (typeof location === "undefined" ? "" : location.origin), apiKey) : "";
   const copy = async () => {
     try { await navigator.clipboard.writeText(prompt); } catch { (document.getElementById("brief-out") as HTMLTextAreaElement | null)?.select(); document.execCommand?.("copy"); }
@@ -53,9 +67,9 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
       {open && (
         <section className="chat-panel" role="dialog" aria-label="Campaign brief">
           <header className="chat-head">
-            <div className="row" style={{ gap: ".55rem" }}><span className="chat-dot"><Spark /></span><div><b>Campaign brief</b><small>Builds a prompt for Claude Cowork</small></div></div>
+            <div className="row" style={{ gap: ".55rem" }}><span className="chat-dot"><Spark /></span><div><b>Campaign brief</b><small>Sent to the automation when you're done</small></div></div>
             <div className="row" style={{ gap: ".3rem" }}>
-              <button className="icon-btn" title="Start over" aria-label="Start over" onClick={() => { setB(blank()); setCopied(false); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></svg></button>
+              <button className="icon-btn" title="Start over" aria-label="Start over" onClick={() => { setB(blank()); setCopied(false); setErr(""); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></svg></button>
               <button className="icon-btn" title="Close" aria-label="Close" onClick={() => setOpen(false)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
             </div>
           </header>
@@ -117,24 +131,39 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
 
             {b.step === 3 && <textarea rows={4} placeholder="Optional" value={b.other} maxLength={2000} onChange={(e) => set({ other: e.target.value })} />}
             {b.step === 4 && <textarea rows={6} placeholder="Optional. Use {{name}} where the creator's name goes." value={b.message} maxLength={2000} onChange={(e) => set({ message: e.target.value })} />}
+            {b.step === 5 && <textarea rows={4} placeholder="Optional, e.g. Hi {{name}}, just bumping this in case it got buried. Would love to work together!" value={b.followUp} maxLength={1000} onChange={(e) => set({ followUp: e.target.value })} />}
 
             {b.step < Q.length && (
               <div className="row spread">
                 {b.step > 0 ? <button className="ghost small-btn" onClick={() => set({ step: b.step - 1 })}>Back</button> : <span />}
                 <div className="row" style={{ gap: ".4rem" }}>
-                  {b.step >= 3 && <button className="ghost small-btn" onClick={() => set({ step: b.step + 1, ...(b.step === 3 ? { other: "" } : { message: "" }) })}>Skip</button>}
-                  <button className="small-btn" disabled={!ok} onClick={next}>{b.step === Q.length - 1 ? "Build prompt" : "Next"}</button>
+                  {b.step >= 3 && <button className="ghost small-btn" onClick={() => set({ step: b.step + 1, ...(b.step === 3 ? { other: "" } : b.step === 4 ? { message: "" } : { followUp: "" }) })}>Skip</button>}
+                  <button className="small-btn" disabled={!ok} onClick={next}>{b.step === Q.length - 1 ? "Review" : "Next"}</button>
                 </div>
               </div>
             )}
 
-            {b.step >= Q.length && (
+            {b.step >= Q.length && !b.sent && (
               <>
-                <div className="bubble bot">Done. Copy this prompt and paste it into Claude Cowork. To change something, click any of your answers above.</div>
-                <textarea id="brief-out" className="prompt-out" rows={12} value={prompt} readOnly onFocus={(e) => e.currentTarget.select()} />
+                <div className="bubble bot">All set. Send it to the automation: Cowork picks it up on its next scheduled run, finds creators, and you approve the shortlist on the Campaigns page before anything is sent. To change an answer, click it above.</div>
+                {err && <div className="notice" role="alert" style={{ margin: 0, borderLeftColor: "var(--bad)" }}>{err}</div>}
                 <div className="row spread">
                   <button className="ghost small-btn" onClick={() => set({ step: Q.length - 1 })}>Back</button>
-                  <button className="small-btn" onClick={copy}>{copied ? "Copied ✓" : "Copy prompt"}</button>
+                  <button className="small-btn" disabled={busy} onClick={submit}>{busy ? "Sending…" : "Send to automation"}</button>
+                </div>
+                <details>
+                  <summary className="small">Or copy a prompt to run it by hand in Cowork</summary>
+                  <textarea id="brief-out" className="prompt-out" rows={10} value={prompt} readOnly onFocus={(e) => e.currentTarget.select()} style={{ marginTop: ".5rem" }} />
+                  <div className="row" style={{ justifyContent: "flex-end", marginTop: ".5rem" }}><button className="ghost small-btn" onClick={copy}>{copied ? "Copied ✓" : "Copy prompt"}</button></div>
+                </details>
+              </>
+            )}
+            {b.sent && (
+              <>
+                <div className="bubble bot">Sent ✓ <b>{b.client}</b> is on the Campaigns page. You&apos;ll get a notification when its shortlist is ready to approve.</div>
+                <div className="row spread">
+                  <Link className="btn ghost small-btn" href="/campaigns" onClick={() => setOpen(false)}>Open Campaigns</Link>
+                  <button className="small-btn" onClick={() => { setB(blank()); setErr(""); }}>Start another brief</button>
                 </div>
               </>
             )}

@@ -2,7 +2,8 @@
 
 Next.js + MongoDB internal tool. The app is the database + API; **Claude Code does the hunting and the Instagram sending** (no Anthropic API key in the app).
 
-All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Base URL: `http://localhost:3000`.
+All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Base URL: `http://localhost:3000` locally, `APP_URL` when hosted
+(https://havstrategyautomation.vercel.app).
 
 ## Endpoints
 - `GET /api/meta`: the database's real vocabulary (niches, IG categories, locations, tiers, statuses with counts, existing clients). **Read before translating a requirement.**
@@ -14,8 +15,11 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
   Fields: `name, igHandle|igUrl, email, niches[], followers, engagementRate (%), platforms[], collab{count,rating 0-5,notes}, notes, source`.
 - `PATCH /api/creators/:id`: update fields.
 - `POST /api/outreach` `{creatorId, clientId?, igMessage?}`: queues an IG DM. Skips creators already queued/sent. **Email outreach is switched off.**
-- `GET /api/outreach/next`: queued IG DMs for now, already limited to today's remaining cap (45/day).
+- `GET /api/outreach/next`: queued IG DMs for now (first DMs and due follow-ups, `followUp:true`), already limited to today's remaining cap (45/day).
 - `POST /api/outreach/:id/sent` `{ok:true}` or `{ok:false,error}`: report the result. Returns 429 once the cap is hit; stop immediately.
+- `GET /api/briefs?status=new`: campaign briefs from the dashboard chat (with `clientDoc`). `POST /api/briefs/:id/claim` takes one (409 = taken).
+  `POST /api/briefs/:id/shortlist {items:[{creatorId,tier,score,why}]}` proposes creators (moves it to awaiting approval, pings the human).
+  `PATCH /api/briefs/:id {draftMessage?, note?, status?:"failed"}`. Approving, "find more" and archiving are dashboard-only (a human).
 
 ## Hunting new creators
 1. `GET /api/clients` to see what's wanted.
@@ -30,6 +34,9 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 5. **No double contact.** The server never queues a second message to a creator who was already queued/sent one (for any client). Still, before
    typing, glance at the thread: if our account has already messaged them, don't send, report `{ok:false,error:"already contacted"}`.
    Send at most one message per creator per run.
+6. **Follow-ups** (`followUp:true` items): one per creator, `FOLLOWUP_DAYS` (default 3) after the first DM, only if the client has a `followUpTemplate`
+   and the creator never replied. The server queues them by itself and cancels them the moment a reply is logged. Type it in the existing chat;
+   if the creator has replied there, report `{ok:false,error:"creator replied"}` instead.
 
 ## Writing messages
 **If the client has a `dmTemplate` (the user's pasted message), never write your own first message.** Queue with `POST /api/outreach
@@ -136,12 +143,23 @@ Queueing a DM claims an unowned creator for OWNER. When set, the server only lis
 invisible (watch/next/pending) or refused (403 "creator belongs to another person"). A 403 like that means: skip the creator, never open the thread. The other
 person sets their own `OWNER` in their own copy of the app.
 
-## Scheduled runs (unattended)
-Runs are started by Cowork's scheduler using the prompts in `prompts/` (replies, send-batch, hunt). Rules for EVERY run:
-1. `POST /api/run/start {kind}` first. **423 = paused, 409 = another run is active: stop and do nothing.**
+## The automated pipeline (scheduled, unattended)
+1. **Brief**: the human fills the "New brief" chat in the dashboard. The server saves the client with the exact budgets per tier, follower range,
+   message and follow-up text, and a brief with status `new`.
+2. **briefs run** (Cowork, every 30 min): claims a brief, completes the client (niches/related/locations/offer), drafts a DM if none was given,
+   searches + hunts, posts a shortlist. Never queues or sends DMs.
+3. **Approval** (human, Campaigns page): ticks creators, edits the message/follow-up, approves. The server queues the DMs right then.
+4. **send run** (Cowork, every 2 h): delivers first DMs and due follow-ups (15 per run, 45/day).
+5. **replies run** (Cowork, hourly): logs replies, answers, negotiates within `tierRates`, escalates.
+6. **Notifications** (`NOTIFY_URL`: ntfy topic, Discord or Slack webhook): pause, failed run/brief, shortlist ready, escalation, deal agreed.
+
+The three scheduled prompts live in `lib/prompts.ts` and are shown, with the real URL and key filled in, on the dashboard's **Automation** page
+(also a setup checklist and a test-notification button). Rules for EVERY run:
+1. `POST /api/run/start {kind}` first (`briefs` | `send` | `replies`). **423 = paused, 409 = another run is active: stop and do nothing.**
+   One run at a time (one Instagram account, one Chrome). A crashed run frees the lock after 20 min (60 min for `briefs`).
 2. If Instagram shows a challenge, action block, "try again later", login wall or anything odd: `POST /api/pause {reason}`, end the run
    with `ok:false`, stop. **There is no API to resume: only a human can, from the dashboard. Never try to work around a pause.**
-3. Finish with `POST /api/run/end {runId, ok, note}`, even on failure. A run that crashes frees its lock after 20 min.
+3. Finish with `POST /api/run/end {runId, ok, note}`, even on failure.
 4. The server hands out nothing while paused (`/api/outreach/next`, `/api/messages/next` return empty), so don't try to send anyway.
 The dashboard "Worker" card shows the last run; if it says "No recent run" the schedule has stopped.
 

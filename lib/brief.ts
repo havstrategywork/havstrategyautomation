@@ -69,5 +69,23 @@ Do this end to end:
    leave the rest queued for tomorrow. If Instagram shows a challenge or block: POST /api/pause and stop.
 5. POST /api/run/end. Report: assumptions, the template as stored, per tier: needed / found / hunted / queued / sent, and anything that failed.
 
-Replies and negotiation are NOT done in this run. They run on the schedule (prompts/replies.md), within each tier's budget above.`;
+Replies and negotiation are NOT done in this run. They run on the schedule (the "Replies" task on the Automation page), within each tier's budget above.`;
+}
+
+export type BriefInput = Brief & { followUp: string };
+
+/** Pure: the client fields a brief fixes exactly. */
+export function clientFieldsFromBrief(b: BriefInput) {
+  const rows = cleanRows(b.rows);
+  if (!b.client.trim()) throw new Error("client name required");
+  if (!rows.length) throw new Error("add at least one creator row with a count and a budget");
+  return {
+    name: b.client.trim(),
+    tierRates: Object.fromEntries(rows.map((r) => [r.tier, money(r.budget, b.currency)])),
+    maxRate: money(Math.max(...rows.map((r) => r.budget)), b.currency),
+    minFollowers: Math.min(...rows.map((r) => TIER_RANGE[r.tier][0])),
+    maxFollowers: Math.max(...rows.map((r) => TIER_RANGE[r.tier][1])),
+    ...(b.message.trim() && { dmTemplate: b.message.trim() }),
+    ...(b.followUp.trim() && { followUpTemplate: b.followUp.trim() }),
+  };
 }

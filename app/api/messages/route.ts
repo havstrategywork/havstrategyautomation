@@ -1,5 +1,6 @@
 import { unauthorized } from "@/lib/auth";
 import { db, igAllowed, inScope } from "@/lib/db";
+import { cancelFollowups } from "@/lib/outreach";
 import { fmtMoney, overCeiling, parseMoney } from "@/lib/money";
 import { alreadyLogged, ceilingFor, findCreator, nextAt } from "@/lib/threads";
 
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
   if (b.direction === "in") {
     if (await alreadyLogged(c._id!, "in", text)) return Response.json({ ok: true, duplicate: true });
     await messages.insertOne({ creatorId: c._id!, direction: "in", text, at: await nextAt(c._id!) });
+    await cancelFollowups(c._id!);
     await creators.updateOne({ _id: c._id!, $or: [{ status: "New" }, { status: "DM Sent" }, { status: { $exists: false } }] }, { $set: { status: "Replied" } });
     return Response.json({ ok: true });
   }

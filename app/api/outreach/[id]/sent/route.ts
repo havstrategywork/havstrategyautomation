@@ -14,7 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (b.ok && o.channel === "ig" && !igAllowed((await creators.findOne({ _id: o.creatorId }))?.igHandle)) return Response.json({ error: "recipient not in IG_ALLOWLIST (test mode)" }, { status: 403 });
   if (b.ok && o.channel === "ig" && (await sentToday("ig")) >= IG_CAP) return Response.json({ error: "daily IG cap reached" }, { status: 429 });
   await outreach.updateOne({ _id: o._id }, { $set: b.ok ? { status: "sent", sentAt: new Date() } : { status: "failed", error: b.error ?? "unknown" } });
-  if (b.ok && o.channel === "ig") {
+  if (b.ok && o.kind === "followup") await creators.updateOne({ _id: o.creatorId }, { $set: { followUpSentAt: new Date() } });
+  else if (b.ok && o.channel === "ig") {
     await creators.updateOne({ _id: o.creatorId }, { $set: { dmSentAt: new Date() } });
     await creators.updateOne({ _id: o.creatorId, $or: [{ status: "New" }, { status: { $exists: false } }] }, { $set: { status: "DM Sent" } });
   }

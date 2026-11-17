@@ -1,0 +1,64 @@
+// Queueing Instagram DMs. One place for the rules, used by the API (Cowork) and by the dashboard's "Approve" button.
+import { ObjectId } from "mongodb";
+import { db, igAllowed, inScope, ownerName, type Creator } from "./db";
+import { firstName, render } from "./template";
+import { DAY, dueForFollowUp, FOLLOWUP_DAYS } from "./followup";
+
+export { FOLLOWUP_DAYS };
+
+
+type QueueIn = { creatorId: string | ObjectId; clientId?: string | ObjectId; igMessage?: string; useTemplate?: boolean; name?: string };
+type QueueOut = { queued: unknown[]; skipped: string[]; error?: string; status?: number };
+
+/** Queues the FIRST DM to a creator. Never double-contacts: skips anyone already queued or sent a first DM (for any client). */
+export async function queueFirstDm(b: QueueIn): Promise<QueueOut> {
+  const { creators, outreach, clients } = await db();
+  const creatorId = new ObjectId(b.creatorId);
+  const clientId = b.clientId && ObjectId.isValid(b.clientId) ? new ObjectId(b.clientId) : undefined;
+  const c = await creators.findOne({ _id: creatorId });
+  if (!c) return { queued: [], skipped: [], error: "creator not found", status: 404 };
+  if (!(await inScope(c, true))) return { queued: [], skipped: [], error: "creator belongs to another person (OWNER); leave them to their owner", status: 403 };
+  const greet = String(b.name ?? "").trim() || firstName(c.name);
+  let message = b.igMessage;
+  if (b.useTemplate) { // the client's pasted message, word for word: only {{name}}/{{handle}} change
+    const cl = clientId ? await clients.findOne({ _id: clientId }) : null;
+    if (!cl?.dmTemplate) return { queued: [], skipped: [], error: "client has no dmTemplate; save one on the client first", status: 400 };
+    try { message = render(cl.dmTemplate, { name: greet, handle: c.igHandle ? `@${c.igHandle}` : "" }); }
+    catch (e) { return { queued: [], skipped: [], error: (e as Error).message, status: 422 }; }
+  }
+  if (!c.igHandle || !message) return { queued: [], skipped: ["ig"] };
+  const testRecipient = !!process.env.IG_ALLOWLIST && igAllowed(c.igHandle); // test mode may re-send to the allowlisted account
+  if (!testRecipient && (await outreach.findOne({ creatorId, channel: "ig", kind: { $ne: "followup" }, status: { $in: ["queued", "sent"] } }))) return { queued: [], skipped: ["ig"] };
+  const doc = { creatorId, ...(clientId && { clientId }), channel: "ig" as const, kind: "first" as const, greet, message, status: "queued" as const, createdAt: new Date() };
+  const queued = [{ ...doc, _id: (await outreach.insertOne(doc)).insertedId }];
+  if (ownerName() && !c.owner) await creators.updateOne({ _id: creatorId }, { $set: { owner: ownerName() } }); // claim the creator
+  if (clientId) await creators.updateOne({ _id: creatorId }, { $addToSet: { suggestedVia: clientId } }); // queuing for a client = suggesting them
+  return { queued, skipped: [] };
+}
+
+
+/** Queues follow-ups that are due, using the client's followUpTemplate. Called whenever the sender asks for work, so no extra schedule is needed. */
+export async function enqueueDueFollowups() {
+  if (FOLLOWUP_DAYS <= 0) return 0;
+  const { creators, clients, outreach, messages } = await db();
+  const due = await creators.find({ status: "DM Sent", dmSentAt: { $lte: new Date(Date.now() - FOLLOWUP_DAYS * DAY) }, followUpSentAt: { $exists: false }, needsHuman: { $exists: false }, igHandle: { $exists: true } }).limit(200).toArray();
+  let n = 0;
+  for (const c of due) {
+    if (!dueForFollowUp(c) || !(await inScope(c))) continue;
+    if (await messages.findOne({ creatorId: c._id, direction: "in" })) continue; // they replied (already logged by the replies run)
+    if (await outreach.findOne({ creatorId: c._id, kind: "followup" })) continue; // one follow-up, ever (even if that one failed)
+    const first = await outreach.findOne({ creatorId: c._id, channel: "ig", status: "sent", kind: { $ne: "followup" } }, { sort: { sentAt: -1 } });
+    const cl = first?.clientId ? await clients.findOne({ _id: first.clientId }) : null;
+    if (!cl?.followUpTemplate) continue; // no follow-up text for this client = no follow-up
+    let message: string;
+    try { message = render(cl.followUpTemplate, { name: first?.greet || firstName(c.name), handle: `@${c.igHandle}` }); } catch { continue; }
+    await outreach.insertOne({ creatorId: c._id!, clientId: cl._id, channel: "ig", kind: "followup", message, status: "queued", createdAt: new Date() });
+    n++;
+  }
+  return n;
+}
+
+/** A creator replied: any follow-up still waiting to go out is pointless now. */
+export async function cancelFollowups(creatorId: ObjectId) {
+  await (await db()).outreach.updateMany({ creatorId, kind: "followup", status: "queued" }, { $set: { status: "failed", error: "creator replied first" } });
+}

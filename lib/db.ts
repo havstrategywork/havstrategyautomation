@@ -39,6 +39,7 @@ export type Client = {
   tierRates?: Record<string, string>; // per-tier cap, keyed by tier name (Nano, Micro, Mid-tier, Macro, Mega), e.g. { Nano: "10k INR" }; overrides maxRate for that tier
   maxRate?: string; // budget text with currency, e.g. "20k INR"; budget per creator: search excludes creators quoting above it, and Claude can never offer/agree above it
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
+  followUpTemplate?: string; // optional nudge sent once, FOLLOWUP_DAYS after the first DM, if the creator never replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
   maxFollowers: number;
@@ -68,6 +69,8 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
+  kind?: "first" | "followup"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;
   status: "queued" | "sent" | "failed";
@@ -76,14 +79,28 @@ export type Outreach = {
   sentAt?: Date;
 };
 
+// A campaign brief from the dashboard chat. Lifecycle (who moves it):
+//   new (dashboard) -> shortlisting (Cowork claims it) -> awaiting_approval (Cowork posted a shortlist)
+//   -> approved (you approve in the dashboard; the DMs are queued right then) ; "Find more" sends it back to new ; failed = Cowork gave up (note says why)
+export type ShortlistItem = { creatorId: ObjectId; tier: string; score?: number; why?: string; decision?: "approved" | "rejected" };
+export type BriefDoc = {
+  _id?: ObjectId; owner?: string; createdAt: Date; updatedAt: Date;
+  status: "new" | "shortlisting" | "awaiting_approval" | "approved" | "failed" | "archived";
+  client: string; products: { name: string; about: string }[]; rows: { tier: string; count: number; budget: number }[];
+  currency: string; other: string; message: string; followUp: string;
+  clientId?: ObjectId; draftMessage?: string; shortlist: ShortlistItem[]; note?: string; runs?: number;
+};
+
 // Dashboard login. Passwords are scrypt hashes; sessions store only a SHA-256 of the cookie token, so a DB leak can't be replayed.
 export type User = { _id?: ObjectId; username: string; passwordHash: string; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
 export type Session = { _id?: ObjectId; tokenHash: string; userId: ObjectId; createdAt: Date; lastSeen: Date; expiresAt: Date; ip?: string; ua?: string };
 export type LoginAttempt = { _id: string; n: number; resetAt: Date }; // per-IP failed-login counter, expires by itself
 
-// reuse the connection across dev hot reloads
+// Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
+// (e.g. after a DNS blip or an .env fix) instead of replaying the same error until someone restarts the server.
 const g = globalThis as unknown as { _mongo?: Promise<MongoClient>; _idx?: Promise<unknown> };
-const client = (g._mongo ??= new MongoClient(process.env.MONGODB_URI!).connect());
+const connect = () =>
+  (g._mongo ??= new MongoClient(process.env.MONGODB_URI!, { serverSelectionTimeoutMS: 15000 }).connect().catch((e) => { g._mongo = undefined; throw e; }));
 
 // Unique handle/email, but only for real strings: a null/blank value (cleared field) must not collide.
 // Drops the first-version sparse indexes (igHandle_1/email_1) if they still exist.
@@ -97,11 +114,12 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("sessions").createIndex({ tokenHash: 1 }, { unique: true });
   await d.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // expired sessions delete themselves
   await d.collection("loginAttempts").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });
+  await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
 }
 
 export async function db() {
-  const d = (await client).db();
-  await (g._idx ??= setupIndexes(d));
+  const d = (await connect()).db();
+  await (g._idx ??= setupIndexes(d).catch((e) => { g._idx = undefined; throw e; }));
   return {
     creators: d.collection<Creator>("creators"),
     clients: d.collection<Client>("clients"),
@@ -111,6 +129,7 @@ export async function db() {
     users: d.collection<User>("users"),
     sessions: d.collection<Session>("sessions"),
     loginAttempts: d.collection<LoginAttempt>("loginAttempts"),
+    briefs: d.collection<BriefDoc>("briefs"),
   };
 }
 

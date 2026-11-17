@@ -50,6 +50,7 @@ export default async function Clients() {
             </dl>
             {c.notes && <p className="muted small" style={{ margin: 0 }}>{c.notes}</p>}
             <div><h3>Message template (sent word for word)</h3><p className="small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.dmTemplate || <span className="muted">None. Claude writes its own first message.</span>}</p></div>
+            {c.followUpTemplate && <div><h3>Follow-up (sent once if no reply)</h3><p className="small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.followUpTemplate}</p></div>}
             <div><h3>Offer brief (what Claude answers from)</h3><p className="small" style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.offer || <span className="muted">None yet. Claude has nothing to answer product or deal questions from, so it will escalate them.</span>}</p></div>
           </div>
         ))}
