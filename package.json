@@ -6,7 +6,7 @@
     "build": "next build",
     "start": "next start",
     "seed": "node --env-file=.env.local scripts/seed.mjs",
-    "test": "node --experimental-strip-types lib/automation.test.ts && node --experimental-strip-types lib/brief.test.ts && node --experimental-strip-types lib/money.test.ts && node --experimental-strip-types lib/score.test.ts && node --experimental-strip-types lib/csv.test.ts && node --experimental-strip-types lib/template.test.ts && node --experimental-strip-types lib/pagination.test.ts"
+    "test": "node --experimental-strip-types lib/automation.test.ts && node --experimental-strip-types lib/brief.test.ts && node --experimental-strip-types lib/money.test.ts && node --experimental-strip-types lib/score.test.ts && node --experimental-strip-types lib/csv.test.ts && node --experimental-strip-types lib/template.test.ts && node --experimental-strip-types lib/pagination.test.ts && node --experimental-strip-types lib/dealrules.test.ts"
   },
   "dependencies": {
     "csv-parse": "^7.0.3",
@@ -14,7 +14,8 @@
     "next": "^16.4.6",
     "nodemailer": "^10.6.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "read-excel-file": "^9.3.17"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

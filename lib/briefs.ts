@@ -12,7 +12,7 @@ const clip = (s: unknown, n: number) => String(s ?? "").slice(0, n);
 /** Saves the client and the brief. Cowork's scheduled "briefs" run picks it up (status "new"). */
 export async function submitBrief(raw: BriefInput) {
   const b: BriefInput = {
-    client: clip(raw.client, 80), currency: clip(raw.currency, 5) || "INR", other: clip(raw.other, 2000), message: clip(raw.message, 2000), followUp: clip(raw.followUp, 1000),
+    client: clip(raw.client, 80), currency: clip(raw.currency, 5) || "INR", other: clip(raw.other, 2000), message: clip(raw.message, 2000), followUp: clip(raw.followUp, 4000), sheetUrl: clip(raw.sheetUrl, 300).trim() || undefined,
     products: (raw.products ?? []).slice(0, 20).map((p) => ({ name: clip(p.name, 80).trim(), about: clip(p.about, 200).trim() })).filter((p) => p.name),
     rows: cleanRows((raw.rows ?? []).slice(0, 5).map((r) => ({ tier: clip(r.tier, 12), count: Math.floor(Number(r.count)) || 0, budget: Number(r.budget) || 0 }))),
   };

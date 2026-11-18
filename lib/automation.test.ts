@@ -1,18 +1,30 @@
 // Pure rules behind the automation: follow-up timing, brief -> client fields, and the scheduled prompts.
 import assert from "node:assert";
-import { dueForFollowUp } from "./followup.ts";
+import { nextStep, stepTexts } from "./followup.ts";
 import { clientFieldsFromBrief } from "./brief.ts";
-import { briefsPrompt, repliesPrompt, sendPrompt } from "./prompts.ts";
+import { briefsPrompt, guidelinesPrompt, repliesPrompt, sendPrompt } from "./prompts.ts";
 
 const now = Date.UTC(2026, 10, 20), day = 864e5;
 const sent = (daysAgo: number) => ({ dmSentAt: new Date(now - daysAgo * day), status: "DM Sent" });
-assert.equal(dueForFollowUp(sent(3), now, 3), true); // exactly 3 days, no reply
-assert.equal(dueForFollowUp(sent(2), now, 3), false); // too early
-assert.equal(dueForFollowUp({ ...sent(5), status: "Replied" }, now, 3), false); // they replied
-assert.equal(dueForFollowUp({ ...sent(5), followUpSentAt: new Date(now - day) }, now, 3), false); // only one follow-up ever
-assert.equal(dueForFollowUp({ ...sent(5), needsHuman: { reason: "x", at: new Date() } }, now, 3), false); // escalated: hands off
-assert.equal(dueForFollowUp(sent(30), now, 0), false); // FOLLOWUP_DAYS=0 turns it off
-assert.equal(dueForFollowUp({ status: "DM Sent" }, now, 3), false); // never sent
+const S = [1, 2, 5, 10], ago = (d: number) => new Date(now - d * day);
+assert.equal(nextStep(sent(1), 0, undefined, now, S), 0); // day 1: first follow-up
+assert.equal(nextStep(sent(0.9), 0, undefined, now, S), -1); // too early
+assert.equal(nextStep(sent(2), 1, ago(1), now, S), 1); // day 2, follow-up 1 went out 24h ago
+assert.equal(nextStep(sent(2), 1, ago(0.5), now, S), -1); // never two within 24h
+assert.equal(nextStep(sent(4), 2, ago(2), now, S), -1); // day 5 not reached yet
+assert.equal(nextStep(sent(5), 2, ago(3), now, S), 2); // day 5
+assert.equal(nextStep(sent(10), 3, ago(5), now, S), 3); // day 10 = the last one
+assert.equal(nextStep(sent(30), 4, ago(20), now, S), -1); // all 4 used: stop
+assert.equal(nextStep(sent(3), 0, undefined, now, S), 0); // after downtime it catches up one step at a time (the 24h rule spaces the rest)
+assert.equal(nextStep({ ...sent(5), status: "Replied" }, 0, undefined, now, S), -1); // they replied
+assert.equal(nextStep({ ...sent(5), needsHuman: { reason: "x", at: new Date() } }, 0, undefined, now, S), -1); // escalated: hands off
+assert.equal(nextStep(sent(30), 0, undefined, now, []), -1); // empty schedule turns it off
+assert.equal(nextStep({ status: "DM Sent" }, 0, undefined, now, S), -1); // never sent
+assert.deepEqual(stepTexts("a\n---\n b \n----\n\nc"), ["a", "b", "c"]); // texts split on a --- line
+assert.deepEqual(stepTexts("just one"), ["just one"]); // old single follow-up = step 1 only
+assert.equal(stepTexts(undefined).length, 4); // no text of its own = the 4 default follow-ups (on by default)
+assert.equal(stepTexts("  ").length, 4);
+assert.deepEqual(stepTexts("None"), []); // opt out per client
 
 const f = clientFieldsFromBrief({
   client: " Nuume ", currency: "INR", other: "", message: "Hi {{name}}!", followUp: "",
@@ -33,6 +45,8 @@ for (const [kind, p] of [["briefs", briefsPrompt], ["send", sendPrompt], ["repli
   assert.ok(t.includes("POST /api/run/end"), kind);
   assert.ok(t.includes("POST /api/pause"), kind);
 }
+const g = guidelinesPrompt("u", "k");
+assert.ok(g.includes("POST /api/deals/run") && !g.includes("/api/run/start"), "guidelines run uses no Instagram lock");
 assert.ok(!briefsPrompt("u", "k").includes("/api/outreach {"), "briefs run must never queue DMs");
 assert.ok(sendPrompt("u", "k").includes('"error":"creator replied"'), "follow-up must check for a reply first");
 console.log("automation ok");

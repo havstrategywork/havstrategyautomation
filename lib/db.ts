@@ -28,9 +28,17 @@ export type Creator = {
   outreachNotes?: string;
   lastChecked?: Date;
   followUpSentAt?: Date;
+  watchedAt?: Date; // last time the replies run was handed this creator's chat to read (rotates the watch list)
   agreedAt?: Date; // when status became Agreed / Declined (set in PATCH /api/creators/:id), for the daily report
   declinedAt?: Date;
   needsHuman?: { reason: string; at: Date }; // Claude stops replying until a human resolves this
+  // client review of agreed deals (see lib/deals.ts)
+  dealClientId?: ObjectId; // which client this deal is for (from the first DM's client)
+  batchId?: ObjectId; // the review sheet this creator is on
+  clientDecision?: "yes" | "no"; // the client's answer, from the file a human uploaded
+  clientNote?: string;
+  decidedAt?: Date;
+  guidelinesSentAt?: Date; // the guidelines email went out; later sheet changes are ignored
 };
 export type Client = {
   _id?: ObjectId;
@@ -41,7 +49,9 @@ export type Client = {
   tierRates?: Record<string, string>; // per-tier cap, keyed by tier name (Nano, Micro, Mid-tier, Macro, Mega), e.g. { Nano: "10k INR" }; overrides maxRate for that tier
   maxRate?: string; // budget text with currency, e.g. "20k INR"; budget per creator: search excludes creators quoting above it, and Claude can never offer/agree above it
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
-  followUpTemplate?: string; // optional nudge sent once, FOLLOWUP_DAYS after the first DM, if the creator never replied
+  sheetUrl?: string; // the client's own Google Sheet (from the brief): each review batch becomes a new "Content creators" tab in it
+  guidelinesTemplate?: string; // email sent to creators the client said Yes to. First line "Subject: ..."; {{name}} {{handle}} {{rate}} are filled in
+  followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
   maxFollowers: number;
@@ -72,7 +82,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  kind?: "first" | "followup" | "guidelines"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;
@@ -82,6 +92,9 @@ export type Outreach = {
   sentAt?: Date;
 };
 
+// One review sheet sent to a client: the Agreed creators on it, and the Google Sheet they answer in.
+export type DealBatch = { _id?: ObjectId; clientId: ObjectId; sheetId: string; tab?: string; url: string; creatorIds: ObjectId[]; createdAt: Date; sharedAt?: Date /* a human gave it to the client */; answeredAt?: Date /* a human uploaded the client's answers */ };
+
 // A campaign brief from the dashboard chat. Lifecycle (who moves it):
 //   new (dashboard) -> shortlisting (Cowork claims it) -> awaiting_approval (Cowork posted a shortlist)
 //   -> approved (you approve in the dashboard; the DMs are queued right then) ; "Find more" sends it back to new ; failed = Cowork gave up (note says why)
@@ -90,7 +103,7 @@ export type BriefDoc = {
   _id?: ObjectId; owner?: string; createdAt: Date; updatedAt: Date;
   status: "new" | "shortlisting" | "awaiting_approval" | "approved" | "failed" | "archived";
   client: string; products: { name: string; about: string }[]; rows: { tier: string; count: number; budget: number }[];
-  currency: string; other: string; message: string; followUp: string;
+  currency: string; other: string; message: string; followUp: string; sheetUrl?: string;
   clientId?: ObjectId; draftMessage?: string; shortlist: ShortlistItem[]; note?: string; runs?: number;
 };
 
@@ -134,6 +147,7 @@ export async function db() {
     sessions: d.collection<Session>("sessions"),
     loginAttempts: d.collection<LoginAttempt>("loginAttempts"),
     briefs: d.collection<BriefDoc>("briefs"),
+    dealBatches: d.collection<DealBatch>("dealBatches"),
   };
 }
 

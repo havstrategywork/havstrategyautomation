@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { ObjectId } from "mongodb";
 import { db, type BriefDoc } from "@/lib/db";
 import { mine } from "@/lib/briefs";
 import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
-import { approveBrief, archiveBrief, findMore } from "./actions";
+import { readyDeals } from "@/lib/deals";
+import { approveBrief, archiveBrief, createSheetAction, findMore, markSharedAction, saveGuidelinesAction, sendGuidelinesAction, uploadAnswersAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +15,16 @@ const LABEL: Record<BriefDoc["status"], string> = {
   approved: "Approved, sending", failed: "Cowork couldn't finish", archived: "Archived",
 };
 
-export default async function Campaigns({ searchParams }: { searchParams: Promise<{ err?: string; all?: string; page?: string }> }) {
-  const { err, all, page: pageParam } = await searchParams;
-  const { briefs, creators, clients } = await db();
+export default async function Campaigns({ searchParams }: { searchParams: Promise<{ err?: string; ok?: string; all?: string; page?: string }> }) {
+  const { err, ok, all, page: pageParam } = await searchParams;
+  const { briefs, creators, clients, dealBatches } = await db();
+
+  // Client review: agreed deals waiting for a sheet, and the sheets already sent (last 60 days) with the client's answers.
+  const waiting = await readyDeals();
+  const batches = await dealBatches.find({ createdAt: { $gte: new Date(Date.now() - 60 * 864e5) } }).sort({ createdAt: -1 }).toArray();
+  const onSheet = await creators.find({ batchId: { $in: batches.map((b) => b._id!) } }).toArray();
+  const reviewClients = [...new Set([...waiting.keys(), ...batches.map((b) => String(b.clientId))])];
+  const reviewNames = new Map((await clients.find({ _id: { $in: reviewClients.map((i) => new ObjectId(i)) } }).toArray()).map((c) => [String(c._id), c]));
   const query = { ...mine(), ...(all ? {} : { status: { $ne: "archived" as const } }) };
 
   const PAGE_SIZE = 15;
@@ -44,6 +53,63 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
         <Link className="btn ghost" href={all ? "/campaigns" : "/campaigns?all=1"}>{all ? "Hide archived" : "Show archived"}</Link>
       </PageHead>
       {err && <div className="notice" role="alert" style={{ borderLeftColor: "var(--bad)" }}>{err}</div>}
+      {ok && <div className="notice" role="status">{ok}</div>}
+
+      {reviewClients.map((cid) => {
+        const cl = reviewNames.get(cid);
+        const mineBatches = batches.filter((b) => String(b.clientId) === cid);
+        const rows = onSheet.filter((c) => String(c.dealClientId) === cid);
+        const toSend = rows.filter((c) => c.clientDecision === "yes" && !c.guidelinesSentAt).length;
+        const n = waiting.get(cid)?.length ?? 0;
+        return (
+          <section key={cid} className="card campaign">
+            <div className="row spread">
+              <div><h2 style={{ margin: 0 }}>{cl?.name ?? "Client"}: client review</h2><div className="small muted">Create the sheet, review it, give it to the client yourself, then upload the file they send back (.xlsx or .csv). Yes = guidelines email.</div></div>
+              {n > 0 && <form action={createSheetAction}><input type="hidden" name="id" value={cid} /><button>Create sheet for {n} agreed creator{n === 1 ? "" : "s"}</button></form>}
+            </div>
+            {mineBatches.map((b) => (
+              <div key={String(b._id)} className="row spread" style={{ margin: ".75rem 0 0", alignItems: "flex-start" }}>
+                <p className="small" style={{ margin: 0 }}>
+                  <b>{b.answeredAt ? "Answers uploaded" : b.sharedAt ? "With the client" : "Review it, then give it to the client"}</b> · sheet from {ago(b.createdAt)} · {b.creatorIds.length} creators · <a href={b.url} target="_blank" rel="noreferrer noopener">open sheet{b.tab ? ` (tab: ${b.tab})` : ""}</a>
+                  {b.sharedAt && <> · given {ago(b.sharedAt)}</>}{b.answeredAt && <> · answers {ago(b.answeredAt)}</>}
+                </p>
+                <form className="row" action={uploadAnswersAction} encType="multipart/form-data">
+                  <input type="hidden" name="id" value={String(b._id)} />
+                  {!b.sharedAt && !b.answeredAt && <button formAction={markSharedAction} className="ghost small-btn">Mark given to client</button>}
+                  <input type="file" name="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Client's returned sheet (.xlsx or .csv)" />
+                  <button className="small-btn">{b.answeredAt ? "Upload corrected answers" : "Upload client's answers"}</button>
+                </form>
+              </div>
+            ))}
+            {rows.length > 0 && (
+              <div className="tablewrap" style={{ marginTop: "1rem" }}>
+                <table>
+                  <thead><tr><th>Creator</th><th className="num">Agreed rate</th><th>Client says</th><th>Note</th><th>Guidelines</th></tr></thead>
+                  <tbody>{rows.map((c) => (
+                    <tr key={String(c._id)}>
+                      <td><Link href={`/creators/${c._id}`}><b>{c.igHandle ? `@${c.igHandle}` : c.name}</b></Link></td>
+                      <td className="num">{c.agreedRate}</td>
+                      <td>{c.clientDecision === "yes" ? "Yes" : c.clientDecision === "no" ? "No" : "Waiting"}</td>
+                      <td className="small muted">{c.clientNote}</td>
+                      <td className="small">{c.guidelinesSentAt ? `Sent ${ago(c.guidelinesSentAt)}` : c.clientDecision === "yes" ? (c.email ? "Ready" : "No email on file") : ""}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            <form className="form" style={{ marginTop: "1rem" }}>
+              <input type="hidden" name="id" value={cid} />
+              <label>Guidelines email for creators the client approves (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} are filled in)
+                <textarea name="guidelines" rows={8} defaultValue={cl?.guidelinesTemplate ?? ""} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
+              </label>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button formAction={saveGuidelinesAction} className="ghost">Save email</button>
+                {toSend > 0 && <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>}
+              </div>
+            </form>
+          </section>
+        );
+      })}
       {!list.length && <div className="card empty">No campaigns yet. Click <b>✦ New brief</b> (bottom right) to start one.</div>}
 
       {list.map((b) => {
@@ -96,7 +162,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                     {!cl?.dmTemplate && !b.message && b.draftMessage && <span className="small">Drafted by Cowork: edit it as you like.</span>}
                   </label>
                   <label>Follow-up if they don&apos;t reply in 3 days (optional, sent once)
-                    <textarea name="followUp" rows={7} defaultValue={cl?.followUpTemplate ?? b.followUp ?? ""} placeholder="Leave empty for no follow-up" />
+                    <textarea name="followUp" rows={7} defaultValue={cl?.followUpTemplate ?? b.followUp ?? ""} placeholder="Leave empty to use the standard 4 follow-ups (day 1, 2, 5, 10). Or write your own, separated by a line with ---. Type none for no follow-ups." />
                   </label>
                 </div>
                 <div className="row spread">

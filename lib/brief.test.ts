@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { buildPrompt, cleanRows, money, tierRange } from "./brief.ts";
+import { buildPrompt, cleanRows, clientFieldsFromBrief, money, sheetIdFromUrl, tierRange } from "./brief.ts";
 
 assert.equal(money(10000, "INR"), "10k INR");
 assert.equal(money(12500, "INR"), "12,500 INR");
@@ -24,4 +24,14 @@ assert.match(p, /Micro 6, Macro 12/); // 3x contact factor
 assert.match(p, /None given\. Draft one/); // no message -> draft for approval, never auto-send
 assert.match(p, /App: https:\/\/havstrategyautomation\.vercel\.app\nAPI key: test-key-123\n/);
 assert.match(buildPrompt({ client: "x", currency: "INR", other: "", message: "", products: [{ name: "p", about: "" }], rows: [{ tier: "Nano", count: 1, budget: 5000 }] }, "u"), /API key: API_KEY in \.env\.local/); // no key -> pointer, not blank
+// the client's Google Sheet link from the brief: only a real Sheets link is accepted, saved in its canonical form
+const SID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+assert.equal(sheetIdFromUrl(` https://docs.google.com/spreadsheets/d/${SID}/edit?usp=sharing#gid=0 `), SID);
+assert.equal(sheetIdFromUrl("https://onedrive.live.com/edit.aspx?resid=x"), null);
+assert.equal(sheetIdFromUrl("https://evil.com/?https://docs.google.com/spreadsheets/d/" + SID), null);
+const base = { client: "X", currency: "INR", other: "", message: "", followUp: "", products: [], rows: [{ tier: "Micro", count: 1, budget: 5000 }] };
+assert.equal(clientFieldsFromBrief({ ...base, sheetUrl: `https://docs.google.com/spreadsheets/d/${SID}/edit?usp=sharing` }).sheetUrl, `https://docs.google.com/spreadsheets/d/${SID}/edit`);
+assert.equal("sheetUrl" in clientFieldsFromBrief({ ...base, sheetUrl: "  " }), false); // empty = no link, fresh sheet later
+assert.throws(() => clientFieldsFromBrief({ ...base, sheetUrl: "https://example.com/book.xlsx" }), /Google Sheets link/);
+
 console.log("brief ok");

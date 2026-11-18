@@ -34,9 +34,10 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 5. **No double contact.** The server never queues a second message to a creator who was already queued/sent one (for any client). Still, before
    typing, glance at the thread: if our account has already messaged them, don't send, report `{ok:false,error:"already contacted"}`.
    Send at most one message per creator per run.
-6. **Follow-ups** (`followUp:true` items): one per creator, `FOLLOWUP_DAYS` (default 3) after the first DM, only if the client has a `followUpTemplate`
-   and the creator never replied. The server queues them by itself and cancels them the moment a reply is logged. Type it in the existing chat;
-   if the creator has replied there, report `{ok:false,error:"creator replied"}` instead.
+6. **Follow-ups** (`followUp:true` items): up to 4 per creator, on day 1, 2, 5 and 10 after the first DM (`FOLLOWUP_SCHEDULE`, default `1,2,5,10`; empty = off),
+   only while the creator never replied. The client's `followUpTemplate` holds one text per step, separated by a line of `---` (step N uses text N; a
+   step with no text is skipped). A client with no text of its own gets the 4 standard ones (`DEFAULT_FOLLOWUPS`, so it is ON by default); the text `none` turns it off for that client. The server queues them by itself (never two within 24h, due ones go first) and cancels them the moment a reply is logged.
+   Type it in the existing chat; if the creator has replied there, report `{ok:false,error:"creator replied"}` instead.
 
 ## Writing messages
 **If the client has a `dmTemplate` (the user's pasted message), never write your own first message.** Queue with `POST /api/outreach
@@ -89,8 +90,10 @@ Never lower `minScore` or drop the niche to make the numbers look better. Never 
 Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min). The app stores the thread; Chrome only reads and types.
 
 **Each run:**
-1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open. Open the inbox, find these handles,
-   and **ignore every other thread**. Never read, open, or reply to anyone not on this list (private messages, friends, other business).
+1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (max 15 per run; live conversations first, then whoever was read longest ago).
+   **Never search or scroll the inbox**: it is shared with other clients and shows display names, so you would match the wrong person. Open each entry's `igUrl`
+   (their profile) and click Message: that opens exactly their chat. Check the header is the same profile; if you can't confirm it, skip that creator. Never read, open,
+   or reply to anyone not on this list (private messages, friends, other business). Not finding a chat is never a reason to pause: pause is only for Instagram restrictions.
 2. **Sync every thread, both sides, oldest first.** Each watch entry has `lastLogged` (the newest message already in our log). In the
    Instagram thread, find that message and take **everything after it**, in order:
    - a message from the creator -> `POST /api/messages {direction:"in", igHandle, text}`
@@ -151,6 +154,14 @@ person sets their own `OWNER` in their own copy of the app.
 3. **Approval** (human, Campaigns page): ticks creators, edits the message/follow-up, approves. The server queues the DMs right then.
 4. **send run** (Cowork, every 2 h): delivers first DMs and due follow-ups (15 per run, 45/day).
 5. **replies run** (Cowork, hourly): logs replies, answers, negotiates within `tierRates`, escalates.
+5a. **Client review** (all manual, from the Campaigns page): the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
+   native Google Sheet shared with the service account as Editor). A human clicks "Create sheet": a NEW "Content creators" tab is added to that sheet (no link = a fresh sheet is made).
+   Nothing is posted anywhere. The human reviews it, gives it to the client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv`
+   ("Upload client's answers"; for an `.xlsx` the first tab with a Decision column is read, rows match by id or Instagram handle). That is the only way Yes/No enters the app: the app never reads the
+   Google Sheet and never posts to Slack.
+5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
+   who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply).
+   Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
 6. **Notifications** (`NOTIFY_URL`: ntfy topic, Discord or Slack webhook): pause, failed run/brief, shortlist ready, escalation, deal agreed.
 
 The three scheduled prompts live in `lib/prompts.ts` and are shown, with the real URL and key filled in, on the dashboard's **Automation** page

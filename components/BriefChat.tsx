@@ -5,12 +5,12 @@
 import { useEffect, useRef, useState } from "react";
 import { TIERS } from "@/lib/fields";
 import Link from "next/link";
-import { buildPrompt, cleanRows, money, tierRange, type Brief, type Row } from "@/lib/brief";
+import { buildPrompt, cleanRows, money, sheetIdFromUrl, tierRange, type Brief, type Row } from "@/lib/brief";
 import { submitBriefAction } from "@/app/campaigns/actions";
 
 const KEY = "briefDraft";
-type Draft = Brief & { step: number; followUp: string; sent?: string };
-const blank = (): Draft => ({ step: 0, client: "", products: [{ name: "", about: "" }], rows: [{ tier: "Micro", count: 2, budget: 10000 }], currency: "INR", other: "", message: "", followUp: "" });
+type Draft = Brief & { step: number; followUp: string; sheetUrl: string; sent?: string };
+const blank = (): Draft => ({ step: 0, client: "", products: [{ name: "", about: "" }], rows: [{ tier: "Micro", count: 2, budget: 10000 }], currency: "INR", other: "", message: "", followUp: "", sheetUrl: "" });
 const CURRENCIES = ["INR", "AED", "USD", "EUR", "GBP"];
 const Q = [
   "Hi! Let's put together a campaign brief. What's the client or brand name?",
@@ -18,7 +18,8 @@ const Q = [
   "What creators do you need? Add a row per tier: how many, and the most you'd pay each.",
   "Any other requirements? Location, niche, audience, deliverables, timeline, brands to avoid…",
   "Paste the outreach message to send, word for word. Skip it and Cowork will draft one for your approval.",
-  "If a creator doesn't reply within 3 days, we can send one follow-up in the same chat. Write it here, or skip for none.",
+  "Follow-ups go out on day 1, 2, 5 and 10 if a creator doesn't reply. Write your own (one per step), or skip to use the standard ones.",
+  "Do you have the client's Google Sheet link? When creators are agreed, we add a new \"Content creators\" tab to it (share it with edit access first). Skip and we'll make a fresh sheet.",
 ];
 
 export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: string }) {
@@ -37,7 +38,7 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
   const setRow = (i: number, p: Partial<Row>) => set({ rows: b.rows.map((r, j) => (j === i ? { ...r, ...p } : r)) });
   const products = b.products.filter((p) => p.name.trim());
   const rows = cleanRows(b.rows);
-  const ok = [b.client.trim() !== "", products.length > 0, rows.length > 0 && rows.length === b.rows.length, true, true, true][b.step] ?? true;
+  const ok = [b.client.trim() !== "", products.length > 0, rows.length > 0 && rows.length === b.rows.length, true, true, true, !b.sheetUrl.trim() || sheetIdFromUrl(b.sheetUrl) !== null][b.step] ?? true;
   const next = () => ok && set({ step: b.step + 1 });
 
   const answer = (i: number) => [
@@ -46,7 +47,8 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
     rows.map((r) => `${r.count} × ${r.tier} at up to ${money(r.budget, b.currency)}`).join(" · "),
     b.other.trim() || "None",
     b.message.trim() ? `“${b.message.trim().slice(0, 90)}${b.message.trim().length > 90 ? "…" : ""}”` : "Skipped, Cowork will draft one",
-    b.followUp.trim() ? `“${b.followUp.trim().slice(0, 90)}${b.followUp.trim().length > 90 ? "…" : ""}”` : "No follow-up",
+    b.followUp.trim() ? `“${b.followUp.trim().slice(0, 90)}${b.followUp.trim().length > 90 ? "…" : ""}”` : "Standard 4 follow-ups (day 1, 2, 5, 10)",
+    b.sheetUrl.trim() ? "New “Content creators” tab in their sheet" : "Skipped, we'll make a fresh sheet",
   ][i];
   const submit = async () => {
     setBusy(true); setErr("");
@@ -131,13 +133,19 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
 
             {b.step === 3 && <textarea rows={4} placeholder="Optional" value={b.other} maxLength={2000} onChange={(e) => set({ other: e.target.value })} />}
             {b.step === 4 && <textarea rows={6} placeholder="Optional. Use {{name}} where the creator's name goes." value={b.message} maxLength={2000} onChange={(e) => set({ message: e.target.value })} />}
-            {b.step === 5 && <textarea rows={4} placeholder="Optional, e.g. Hi {{name}}, just bumping this in case it got buried. Would love to work together!" value={b.followUp} maxLength={1000} onChange={(e) => set({ followUp: e.target.value })} />}
+            {b.step === 5 && <textarea rows={8} placeholder={"Optional (empty = standard 4 follow-ups; none = no follow-ups). Or write your own, up to 4 follow-ups (day 1, 2, 5, 10), separated by a line with ---\nHi {{name}}, just bumping this in case it got buried!\n---\nSecond follow-up text...\n---\nThird...\n---\nFourth..."} value={b.followUp} maxLength={4000} onChange={(e) => set({ followUp: e.target.value })} />}
+            {b.step === 6 && (
+              <>
+                <input type="url" placeholder="https://docs.google.com/spreadsheets/d/…" value={b.sheetUrl} maxLength={300} onChange={(e) => set({ sheetUrl: e.target.value })} onKeyDown={(e) => e.key === "Enter" && next()} />
+                {!ok && <div className="small muted">That needs to be a Google Sheets link. If it&apos;s an Excel file in Drive, open it and use File → Save as Google Sheets first.</div>}
+              </>
+            )}
 
             {b.step < Q.length && (
               <div className="row spread">
                 {b.step > 0 ? <button className="ghost small-btn" onClick={() => set({ step: b.step - 1 })}>Back</button> : <span />}
                 <div className="row" style={{ gap: ".4rem" }}>
-                  {b.step >= 3 && <button className="ghost small-btn" onClick={() => set({ step: b.step + 1, ...(b.step === 3 ? { other: "" } : b.step === 4 ? { message: "" } : { followUp: "" }) })}>Skip</button>}
+                  {b.step >= 3 && <button className="ghost small-btn" onClick={() => set({ step: b.step + 1, ...(b.step === 3 ? { other: "" } : b.step === 4 ? { message: "" } : b.step === 5 ? { followUp: "" } : { sheetUrl: "" }) })}>Skip</button>}
                   <button className="small-btn" disabled={!ok} onClick={next}>{b.step === Q.length - 1 ? "Review" : "Next"}</button>
                 </div>
               </div>

@@ -72,13 +72,18 @@ Do this end to end:
 Replies and negotiation are NOT done in this run. They run on the schedule (the "Replies" task on the Automation page), within each tier's budget above.`;
 }
 
-export type BriefInput = Brief & { followUp: string };
+export type BriefInput = Brief & { followUp: string; sheetUrl?: string };
+
+/** Google Sheets link -> spreadsheet id, or null. Pure. */
+export const sheetIdFromUrl = (u: string) => u.trim().match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([\w-]{20,})/)?.[1] ?? null;
 
 /** Pure: the client fields a brief fixes exactly. */
 export function clientFieldsFromBrief(b: BriefInput) {
   const rows = cleanRows(b.rows);
   if (!b.client.trim()) throw new Error("client name required");
   if (!rows.length) throw new Error("add at least one creator row with a count and a budget");
+  const sid = b.sheetUrl?.trim() ? sheetIdFromUrl(b.sheetUrl) : null;
+  if (b.sheetUrl?.trim() && !sid) throw new Error("the sheet link must be a Google Sheets link (docs.google.com/spreadsheets/d/...). For an .xlsx file, open it in Google Drive and use File > Save as Google Sheets");
   return {
     name: b.client.trim(),
     tierRates: Object.fromEntries(rows.map((r) => [r.tier, money(r.budget, b.currency)])),
@@ -87,5 +92,6 @@ export function clientFieldsFromBrief(b: BriefInput) {
     maxFollowers: Math.max(...rows.map((r) => TIER_RANGE[r.tier][1])),
     ...(b.message.trim() && { dmTemplate: b.message.trim() }),
     ...(b.followUp.trim() && { followUpTemplate: b.followUp.trim() }),
+    ...(sid && { sheetUrl: `https://docs.google.com/spreadsheets/d/${sid}/edit` }),
   };
 }

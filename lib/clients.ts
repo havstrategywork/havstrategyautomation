@@ -20,7 +20,7 @@ export async function upsertClient(b: Record<string, any>) { // eslint-disable-l
     tr[t] = cleanMoney(v, `tierRates.${t}`);
   }
   if (b.notes != null) set.notes = String(b.notes);
-  for (const k of ["offer", "dmTemplate", "followUpTemplate"]) if (b[k] != null) set[k] = String(b[k]);
+  for (const k of ["offer", "dmTemplate", "followUpTemplate", "guidelinesTemplate", "sheetUrl"]) if (b[k] != null) set[k] = String(b[k]);
   for (const [k, v] of Object.entries(b.weights ?? {})) set[`weights.${k}`] = Number(v);
 
   const existing = await clients.findOne({ name: new RegExp(`^${esc(String(b.name).trim())}$`, "i") });

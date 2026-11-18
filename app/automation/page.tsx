@@ -4,7 +4,7 @@ import { db, IG_CAP, ownerName, sentToday } from "@/lib/db";
 import { controlState } from "@/lib/control";
 import { currentUser } from "@/lib/session";
 import { notify } from "@/lib/notify";
-import { FOLLOWUP_DAYS } from "@/lib/outreach";
+import { FOLLOWUP_SCHEDULE } from "@/lib/outreach";
 import { PROMPTS, SCHEDULES, type Kind } from "@/lib/prompts";
 import { PageHead, ago } from "@/components/ui";
 import CopyBlock from "@/components/CopyBlock";
@@ -33,7 +33,7 @@ export default async function Automation() {
     [!!ownerName(), "OWNER is set", ownerName() || "Set OWNER (e.g. akshit) so you and your teammate never touch each other's creators."],
     [!process.env.IG_ALLOWLIST, "Live mode (no IG_ALLOWLIST)", process.env.IG_ALLOWLIST ? `Test mode: only ${process.env.IG_ALLOWLIST} gets messages.` : "Real creators get messages."],
     [!!process.env.NOTIFY_URL, "Notifications (NOTIFY_URL)", process.env.NOTIFY_URL ? "Configured. Use the test button below." : "Not set: you won't be pinged for pauses, escalations or shortlists."],
-    [FOLLOWUP_DAYS > 0, "Follow-ups", FOLLOWUP_DAYS > 0 ? `One follow-up after ${FOLLOWUP_DAYS} days with no reply (when the campaign has follow-up text).` : "Off (FOLLOWUP_DAYS=0)."],
+    [FOLLOWUP_SCHEDULE.length > 0, "Follow-ups", FOLLOWUP_SCHEDULE.length ? `Up to ${FOLLOWUP_SCHEDULE.length}, on day ${FOLLOWUP_SCHEDULE.join(", ")} after the first DM, while there is no reply (one text per step in the campaign's follow-up).` : "Off (FOLLOWUP_SCHEDULE empty)."],
   ];
 
   return (
