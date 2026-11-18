@@ -2,7 +2,8 @@ import { ObjectId } from "mongodb";
 import { unauthorized } from "@/lib/auth";
 import { addShortlist } from "@/lib/briefs";
 
-// body: { items: [{ creatorId, tier, score?, why? }] }. Adds candidates and moves the brief to "awaiting_approval" (you get a ping).
+// body: { items: [{ creatorId, tier, score?, why? }] }. Adds candidates and moves the brief to "awaiting_approval". If the client has a saved message and AUTO_APPROVE is not "off",
+// the DMs are queued right away (reply has autoApproved:true); otherwise you get a ping to approve it in the dashboard.
 // Creators that can't be contacted are refused with a reason (already contacted, someone else's, no IG handle...).
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const bad = unauthorized(req); if (bad) return bad;

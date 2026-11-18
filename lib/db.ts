@@ -31,6 +31,7 @@ export type Creator = {
   watchedAt?: Date; // last time the replies run was handed this creator's chat to read (rotates the watch list)
   agreedAt?: Date; // when status became Agreed / Declined (set in PATCH /api/creators/:id), for the daily report
   declinedAt?: Date;
+  undeliverable?: { reason: string; at: Date }; // Instagram said our DM can't be delivered (e.g. "can't receive your message"): no follow-ups, not shortlisted again
   needsHuman?: { reason: string; at: Date }; // Claude stops replying until a human resolves this
   // client review of agreed deals (see lib/deals.ts)
   dealClientId?: ObjectId; // which client this deal is for (from the first DM's client)
@@ -151,7 +152,7 @@ export async function db() {
   };
 }
 
-export const IG_CAP = Number(process.env.IG_DAILY_CAP ?? 45);
+export const IG_CAP = Number(process.env.IG_DAILY_CAP ?? 75);
 export const startOfToday = () => new Date(new Date().setHours(0, 0, 0, 0));
 
 export async function sentToday(channel: "ig" | "email") {

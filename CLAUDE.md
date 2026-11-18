@@ -15,10 +15,10 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
   Fields: `name, igHandle|igUrl, email, niches[], followers, engagementRate (%), platforms[], collab{count,rating 0-5,notes}, notes, source`.
 - `PATCH /api/creators/:id`: update fields.
 - `POST /api/outreach` `{creatorId, clientId?, igMessage?}`: queues an IG DM. Skips creators already queued/sent. **Email outreach is switched off.**
-- `GET /api/outreach/next`: queued IG DMs for now (first DMs and due follow-ups, `followUp:true`), already limited to today's remaining cap (45/day).
+- `GET /api/outreach/next`: queued IG DMs for now (first DMs and due follow-ups, `followUp:true`), already limited to today's remaining cap (75/day).
 - `POST /api/outreach/:id/sent` `{ok:true}` or `{ok:false,error}`: report the result. Returns 429 once the cap is hit; stop immediately.
 - `GET /api/briefs?status=new`: campaign briefs from the dashboard chat (with `clientDoc`). `POST /api/briefs/:id/claim` takes one (409 = taken).
-  `POST /api/briefs/:id/shortlist {items:[{creatorId,tier,score,why}]}` proposes creators (moves it to awaiting approval, pings the human).
+  `POST /api/briefs/:id/shortlist {items:[{creatorId,tier,score,why}]}` proposes creators (moves it to awaiting approval; if the client has a saved `dmTemplate` and `AUTO_APPROVE` isn't `off` the server then approves it itself, reply `autoApproved:true`; otherwise it pings the human).
   `PATCH /api/briefs/:id {draftMessage?, note?, status?:"failed"}`. Approving, "find more" and archiving are dashboard-only (a human).
 
 ## Hunting new creators
@@ -151,8 +151,8 @@ person sets their own `OWNER` in their own copy of the app.
    message and follow-up text, and a brief with status `new`.
 2. **briefs run** (Cowork, every 30 min): claims a brief, completes the client (niches/related/locations/offer), drafts a DM if none was given,
    searches + hunts, posts a shortlist. Never queues or sends DMs.
-3. **Approval** (human, Campaigns page): ticks creators, edits the message/follow-up, approves. The server queues the DMs right then.
-4. **send run** (Cowork, every 2 h): delivers first DMs and due follow-ups (15 per run, 45/day).
+3. **Approval** (automatic): when the shortlist is posted and the client has a saved `dmTemplate`, the server queues the first DM for every shortlisted creator right then (the user's own saved message, word for word; caps, allowlist and the one-DM-per-creator rule still apply). With no saved message (or `AUTO_APPROVE=off`) a human approves on the Campaigns page, ticking creators and editing the message/follow-up.
+4. **send run** (Cowork, every 2 h): delivers first DMs and due follow-ups (15 per run, 75/day).
 5. **replies run** (Cowork, hourly): logs replies, answers, negotiates within `tierRates`, escalates.
 5a. **Client review** (all manual, from the Campaigns page): the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
    native Google Sheet shared with the service account as Editor). A human clicks "Create sheet": a NEW "Content creators" tab is added to that sheet (no link = a fresh sheet is made).

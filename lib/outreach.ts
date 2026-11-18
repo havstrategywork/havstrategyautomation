@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { db, igAllowed, inScope, ownerName, type Creator } from "./db";
 import { firstName, render } from "./template";
 import { DAY, FOLLOWUP_SCHEDULE, nextStep, stepTexts } from "./followup";
+import { notify } from "./notify";
 
 export { FOLLOWUP_SCHEDULE };
 
@@ -68,10 +69,23 @@ export async function enqueueDueFollowups() {
   return n;
 }
 
+/** Our first DM never reached them (Instagram: "can't receive your message"). Undo "sent": the DM is recorded as failed, the creator goes back to New with no DM date,
+ *  waiting follow-ups are cancelled, and they are flagged so no later shortlist or follow-up tries again. Safe to call twice. */
+export async function markUndelivered(creatorId: ObjectId, reason: string) {
+  const { creators, outreach } = await db();
+  const why = reason.replace(/\s+/g, " ").trim().slice(0, 200);
+  await outreach.findOneAndUpdate({ creatorId, channel: "ig", kind: { $ne: "followup" }, status: "sent" }, { $set: { status: "failed", error: `not delivered: ${why}` } }, { sort: { sentAt: -1 } });
+  await outreach.updateMany({ creatorId, kind: "followup", status: "queued" }, { $set: { status: "failed", error: "first DM not delivered" } });
+  const c = await creators.findOneAndUpdate({ _id: creatorId, undeliverable: { $exists: false } }, { $set: { undeliverable: { reason: why, at: new Date() } }, $unset: { dmSentAt: "" } });
+  if (!c) return; // already handled
+  await creators.updateOne({ _id: creatorId, status: "DM Sent" }, { $set: { status: "New" } });
+  await notify(`DM not delivered: @${c.igHandle ?? creatorId}`, `${why}. Marked as not contacted; no follow-ups. Reach them another way if you still want them.`);
+}
+
 /** True when a conversation is going on with this creator: they wrote to us, we answered them, they moved past "DM Sent", or a human took over. Follow-ups never go to these. */
-export async function conversationActive(c: Pick<Creator, "_id" | "status" | "needsHuman"> | null) {
+export async function conversationActive(c: Pick<Creator, "_id" | "status" | "needsHuman" | "undeliverable"> | null) {
   if (!c) return true;
-  if (c.status !== "DM Sent" || c.needsHuman) return true;
+  if (c.status !== "DM Sent" || c.needsHuman || c.undeliverable) return true;
   return !!(await (await db()).messages.findOne({ creatorId: c._id, $or: [{ direction: "in" }, { by: "claude" }] }));
 }
 

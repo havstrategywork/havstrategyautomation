@@ -4,7 +4,7 @@
 export type Kind = "briefs" | "send" | "replies" | "guidelines";
 export const SCHEDULES: Record<Kind, { title: string; when: string; what: string }> = {
   briefs: { title: "1. Briefs: find creators", when: "Every 30 minutes, 9:00–21:00", what: "Picks up briefs from the New brief chat, hunts and scores creators, posts a shortlist for you to approve." },
-  send: { title: "2. Send DMs", when: "Every 2 hours, 10:00–20:00", what: "Sends approved first DMs and due follow-ups on Instagram, 15 per run, max 45 a day." },
+  send: { title: "2. Send DMs", when: "Every 2 hours, 10:00–20:00", what: "Sends approved first DMs and due follow-ups on Instagram, 15 per run, max 75 a day." },
   replies: { title: "3. Replies", when: "Every hour, 9:00–22:00", what: "Logs creator replies, answers and negotiates within budget, escalates to you when needed." },
   guidelines: { title: "4. Guidelines emails", when: "Every hour, 9:00–21:00", what: "Emails the saved guidelines and terms to every creator a client approved (the answers are uploaded by a human on the Campaigns page). No Instagram or Chrome needed." },
 };
@@ -28,7 +28,7 @@ Rules for EVERY run:
 export function briefsPrompt(url: string, key: string) {
   return `${header("briefs", url, key)}
 
-The job: turn ONE new campaign brief into a shortlist that a human approves in the dashboard. You never queue or send DMs in this run.
+The job: turn ONE new campaign brief into a shortlist. You never queue or send DMs in this run: when you post the shortlist the SERVER approves it by itself if the client has a saved message (the reply says autoApproved:true); otherwise a human approves it in the dashboard.
 
 1. GET /api/briefs?status=new. If the list is empty: end the run (ok:true, note "no new briefs") and stop.
 2. Take the OLDEST brief and claim it: POST /api/briefs/<_id>/claim. On 409 try the next one. Work on ONE brief per run.
@@ -42,7 +42,7 @@ The job: turn ONE new campaign brief into a shortlist that a human approves in t
    - offer: what the products are and what the creators would do and get, ONLY from the brief, ending with "Anything not stated here is not decided yet."
      No extra deliverables, payment terms, dates, exclusivity or usage rights unless the brief says so.
 4. If the brief has no message AND clientDoc has no dmTemplate: draft one short Instagram DM (under 400 characters: who we are, the products,
-   the ask, {{name}} where the creator's name goes) and PATCH /api/briefs/<_id> {"draftMessage":"..."}. The human edits and approves it.
+   the ask, {{name}} where the creator's name goes) and PATCH /api/briefs/<_id> {"draftMessage":"..."}. A human edits and approves it (a client with no saved message is never auto-approved).
 5. Candidates. For each row the target is 3 x count (not everyone replies). POST /api/search {"clientId": "<clientId>", "want": 100}.
    From "results" keep creators that: have an igHandle, alreadyContacted is false, status is not "Declined", are not in the brief's shortlist,
    and whose "tier" is one of the brief's rows. Respect anything in "other" (gender, age, location, language, brands to avoid...).
@@ -54,7 +54,7 @@ The job: turn ONE new campaign brief into a shortlist that a human approves in t
    with up to the target per tier, best score first. The response lists any refused creators with a reason; that's fine.
 8. If nobody suitable was found at all: PATCH /api/briefs/<_id> {"status":"failed","note":"<what was tried, what would help>"}.
    Otherwise PATCH /api/briefs/<_id> {"note":"<per tier: shortlisted vs target>"}.
-9. End the run (note e.g. "Nuume: 9 shortlisted, 6 hunted"). The human gets a notification and approves on the Campaigns page.`;
+9. End the run (note e.g. "Nuume: 9 shortlisted, 6 hunted"). If the shortlist reply said autoApproved:true the DMs are already queued for the send run; if not, the human gets a notification and approves on the Campaigns page.`;
 }
 
 export function sendPrompt(url: string, key: string) {
@@ -73,7 +73,7 @@ The job: deliver queued Instagram DMs (approved first DMs, and follow-ups that a
      report {"ok":false,"error":"creator replied"}. If our last message in the chat is less than 20 hours old, report {"ok":false,"error":"too soon"}.
      Otherwise type it EXACTLY, send, then report {"ok":true}.
    - No Message button, private account or can't DM: report {"ok":false,"error":"<why>"} and continue (not a block).
-   - A 429 from /sent means the daily cap (45) is reached: stop sending and end the run.
+   - A 429 from /sent means the daily cap (75) is reached: stop sending and end the run.
    - Wait a random 60-180 seconds between DMs. Never send anything the server didn't hand you. Never retry a sent item.
 3. End the run (note "<n> sent (<n> follow-ups), <n> failed").`;
 }
@@ -86,7 +86,9 @@ The job: handle Instagram replies from creators we've messaged. You write as the
 1. GET /api/conversations?view=watch. These are the ONLY creators whose Instagram chats you may open (a batch of up to 15 per run; the rest come on later runs).
    If the list is empty, end the run ok:true "nothing to watch". NEVER search or scroll the Instagram inbox: it is shared with other clients and shows display
    names, not handles, so you would match the wrong person. For each entry open its "igUrl" (the creator's profile) in a tab and click Message: that opens
-   exactly their existing chat. Confirm the chat header shows that same handle/profile before reading it. If there is no Message button, the chat is empty,
+   exactly their existing chat. Confirm the chat header shows that same handle/profile before reading it.
+   If OUR first message in that chat shows a "not delivered", "couldn't send" or "can't receive your message" marker, POST
+   /api/conversations/<creatorId>/undelivered {"reason":"<the text shown>"} and move on (the server undoes "sent" and stops follow-ups). If there is no Message button, the chat is empty,
    or you cannot confirm it is the right person, SKIP that creator (note it) and move on. Never guess a match. Skipping never means pausing.
 2. Sync each watched chat, oldest message first. Each entry has "lastLogged" (the newest message already stored). Take everything AFTER it:
    - from the creator -> POST /api/messages {"direction":"in","igHandle":"<handle>","text":"<text>"}

@@ -65,7 +65,7 @@ Do this end to end:
    If a tier is short, hunt real creators for that tier only (public info, nothing invented, max 20 in total), push them, and search once more.
 3. Show me the shortlist per tier (handle, followers, score, location) and how many each tier is short. WAIT for my OK before queueing anything.
 4. After my OK: POST /api/outreach {creatorId, clientId, useTemplate:true, name:"<greeting name>"} for each approved creator. Then send:
-   GET /api/outreach/next?limit=45 and send each DM in Chrome (60-180 s apart), POST /api/outreach/:id/sent after each. The cap is 45 DMs a day;
+   GET /api/outreach/next?limit=75 and send each DM in Chrome (60-180 s apart), POST /api/outreach/:id/sent after each. The cap is 75 DMs a day;
    leave the rest queued for tomorrow. If Instagram shows a challenge or block: POST /api/pause and stop.
 5. POST /api/run/end. Report: assumptions, the template as stored, per tier: needed / found / hunted / queued / sent, and anything that failed.
 

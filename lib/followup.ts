@@ -18,6 +18,9 @@ export const stepTexts = (tpl?: string) => {
   return /^none$/i.test(t) ? [] : t.split(FOLLOWUP_SEP).map((s) => s.trim()).filter(Boolean);
 };
 
+/** Instagram's wording when a DM can't be delivered. Pure, so the sender's error text and the replies run's observation are judged the same way. */
+export const UNDELIVERED = /not delivered|can['’]?t receive|cannot receive|couldn['’]?t send|unable to send|isn['’]?t accepting|not accepting messages/i;
+
 type C = Pick<Creator, "dmSentAt" | "status" | "needsHuman">;
 /** Pure rule: which follow-up (0-based) goes out next, or -1. `done` = follow-ups already queued/sent/failed, `lastAt` = when the last one went out. Never two in one 24h, never after a reply. */
 export const nextStep = (c: C, done: number, lastAt?: Date, now = Date.now(), schedule = FOLLOWUP_SCHEDULE) =>

@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     const { creators } = await db();
     const limit = Math.min(50, Number(new URL(req.url).searchParams.get("limit")) || 15);
     const live = (s?: string) => s === "Replied" || s === "Negotiating";
-    const rows = (await creators.find({ igHandle: { $exists: true }, $or: [{ dmSentAt: { $exists: true } }, { status: { $in: ["DM Sent", "Replied", "Negotiating"] } }], status: { $nin: ["Declined"] } }).toArray())
+    const rows = (await creators.find({ igHandle: { $exists: true }, $or: [{ dmSentAt: { $exists: true } }, { status: { $in: ["DM Sent", "Replied", "Negotiating"] } }], status: { $nin: ["Declined"] }, undeliverable: { $exists: false } }).toArray())
       .sort((a, b) => +live(b.status) - +live(a.status) || +(a.watchedAt ?? 0) - +(b.watchedAt ?? 0));
     const { messages } = await db();
     const out = [];

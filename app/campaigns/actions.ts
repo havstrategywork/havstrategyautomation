@@ -5,10 +5,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
-import { mine, submitBrief } from "@/lib/briefs";
+import { mine, queueShortlist, submitBrief } from "@/lib/briefs";
 import type { BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
-import { queueFirstDm } from "@/lib/outreach";
 import { render } from "@/lib/template";
 import { applyAnswers, createBatch, markShared, sendGuidelines } from "@/lib/deals";
 import { csvRows } from "@/lib/dealrules";
@@ -49,16 +48,8 @@ export async function approveBrief(fd: FormData) {
   await upsertClient({ name: cl.name, dmTemplate: dm, followUpTemplate: fu });
 
   const picked = new Set(fd.getAll("pick").map(String));
-  let queued = 0, skipped = 0;
-  const shortlist = [];
-  for (const s of b.shortlist) {
-    if (s.decision) { shortlist.push(s); continue; } // decided in an earlier round
-    if (!picked.has(String(s.creatorId))) { shortlist.push({ ...s, decision: "rejected" as const }); continue; }
-    const r = await queueFirstDm({ creatorId: s.creatorId, clientId: b.clientId, useTemplate: true });
-    if (r.queued.length) queued++; else skipped++;
-    shortlist.push({ ...s, decision: "approved" as const });
-  }
-  await briefs.updateOne({ _id: id }, { $set: { shortlist, status: "approved", updatedAt: new Date(), note: `Approved: ${queued} DM${queued === 1 ? "" : "s"} queued${skipped ? `, ${skipped} skipped (already contacted or no handle)` : ""}. The scheduled sender delivers them (45 a day).` } });
+  const { queued, skipped, shortlist } = await queueShortlist(b, (s) => picked.has(String(s.creatorId)));
+  await briefs.updateOne({ _id: id }, { $set: { shortlist, status: "approved", updatedAt: new Date(), note: `Approved: ${queued} DM${queued === 1 ? "" : "s"} queued${skipped ? `, ${skipped} skipped (already contacted or no handle)` : ""}. The scheduled sender delivers them (75 a day).` } });
   revalidatePath("/campaigns");
   revalidatePath("/outreach");
 }

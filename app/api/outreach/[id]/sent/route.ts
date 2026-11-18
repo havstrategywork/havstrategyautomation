@@ -1,6 +1,8 @@
 import { ObjectId } from "mongodb";
 import { unauthorized } from "@/lib/auth";
 import { db, IG_CAP, igAllowed, inScope, sentToday } from "@/lib/db";
+import { UNDELIVERED } from "@/lib/followup";
+import { markUndelivered } from "@/lib/outreach";
 
 // body: { ok: true } or { ok: false, error: "..." }. The cap is enforced here too, not just in /next.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,6 +16,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (b.ok && o.channel === "ig" && !igAllowed((await creators.findOne({ _id: o.creatorId }))?.igHandle)) return Response.json({ error: "recipient not in IG_ALLOWLIST (test mode)" }, { status: 403 });
   if (b.ok && o.channel === "ig" && (await sentToday("ig")) >= IG_CAP) return Response.json({ error: "daily IG cap reached" }, { status: 429 });
   await outreach.updateOne({ _id: o._id }, { $set: b.ok ? { status: "sent", sentAt: new Date() } : { status: "failed", error: b.error ?? "unknown" } });
+  if (!b.ok && o.channel === "ig" && o.kind !== "followup" && UNDELIVERED.test(String(b.error ?? ""))) await markUndelivered(o.creatorId, String(b.error)); // can't be DM'd at all: flag them
   if (b.ok && o.kind === "followup") await creators.updateOne({ _id: o.creatorId }, { $set: { followUpSentAt: new Date() } });
   else if (b.ok && o.channel === "ig") {
     await creators.updateOne({ _id: o.creatorId }, { $set: { dmSentAt: new Date() } });

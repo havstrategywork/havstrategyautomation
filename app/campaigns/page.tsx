@@ -11,7 +11,7 @@ import { approveBrief, archiveBrief, createSheetAction, findMore, markSharedActi
 export const dynamic = "force-dynamic";
 
 const LABEL: Record<BriefDoc["status"], string> = {
-  new: "Waiting for Cowork", shortlisting: "Cowork is finding creators", awaiting_approval: "Needs your approval",
+  new: "Waiting for Cowork", shortlisting: "Cowork is finding creators", awaiting_approval: "Needs your approval (no saved message)",
   approved: "Approved, sending", failed: "Cowork couldn't finish", archived: "Archived",
 };
 
@@ -48,7 +48,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
     <>
       <PageHead
         title="Campaigns"
-        sub={`Briefs from the New brief chat. Cowork finds creators; you approve; the DMs go out on schedule.${total > 0 ? ` · ${total} campaign${total === 1 ? "" : "s"}` : ""}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}`}
+        sub={`Briefs from the New brief chat. Cowork finds creators; with a saved message they're approved automatically, otherwise you approve; the DMs go out on schedule.${total > 0 ? ` · ${total} campaign${total === 1 ? "" : "s"}` : ""}${totalPages > 1 ? ` · Page ${currentPage} of ${totalPages}` : ""}`}
       >
         <Link className="btn ghost" href={all ? "/campaigns" : "/campaigns?all=1"}>{all ? "Hide archived" : "Show archived"}</Link>
       </PageHead>

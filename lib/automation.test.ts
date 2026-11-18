@@ -1,6 +1,6 @@
 // Pure rules behind the automation: follow-up timing, brief -> client fields, and the scheduled prompts.
 import assert from "node:assert";
-import { nextStep, stepTexts } from "./followup.ts";
+import { nextStep, stepTexts, UNDELIVERED } from "./followup.ts";
 import { clientFieldsFromBrief } from "./brief.ts";
 import { briefsPrompt, guidelinesPrompt, repliesPrompt, sendPrompt } from "./prompts.ts";
 
@@ -25,6 +25,8 @@ assert.deepEqual(stepTexts("just one"), ["just one"]); // old single follow-up =
 assert.equal(stepTexts(undefined).length, 4); // no text of its own = the 4 default follow-ups (on by default)
 assert.equal(stepTexts("  ").length, 4);
 assert.deepEqual(stepTexts("None"), []); // opt out per client
+for (const t of ["This account can’t receive your message", "Message not delivered", "Couldn't send", "can't receive your message"]) assert.ok(UNDELIVERED.test(t), t);
+assert.equal(UNDELIVERED.test("no Message button on the profile"), false); // only real delivery failures count
 
 const f = clientFieldsFromBrief({
   client: " Nuume ", currency: "INR", other: "", message: "Hi {{name}}!", followUp: "",
