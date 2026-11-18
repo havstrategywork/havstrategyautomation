@@ -63,7 +63,7 @@ export async function applyAnswers(batchId: ObjectId, rows: string[][]) {
     if (c.clientDecision !== a.decision || c.clientNote !== a.note) await creators.updateOne({ _id: c._id, guidelinesSentAt: { $exists: false } }, { $set: { clientDecision: a.decision, clientNote: a.note, decidedAt: new Date() } });
     res[a.decision]++;
   }
-  if (res.yes + res.no === 0) throw new Error(`no Yes/No answers found in that file${res.unmatched ? ` (${res.unmatched} rows didn't match this sheet's creators)` : ""}`);
+  if (res.yes + res.no + res.locked === 0) throw new Error(`no Yes/No answers found in that file${res.unmatched ? ` (${res.unmatched} rows didn't match this sheet's creators)` : ""}`);
   await dealBatches.updateOne({ _id: batchId }, { $set: { answeredAt: new Date() } });
   await notify(`Client answers uploaded: ${(await clients.findOne({ _id: b.clientId }))?.name ?? "client"}`, `${res.yes} yes, ${res.no} no. The guidelines email goes to the Yes ones on the next run, or send it from Campaigns.`);
   return res;

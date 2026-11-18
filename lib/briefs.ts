@@ -45,6 +45,7 @@ export async function addShortlist(briefId: ObjectId, items: { creatorId: string
     have.add(String(id));
     added.push({ creatorId: id, tier: clip(it.tier, 12) || "", ...(it.score != null && { score: Number(it.score) }), ...(it.why && { why: clip(it.why, 200) }) });
   }
+  if (!added.length) return { added: 0, rejected, autoApproved: false }; // nothing usable: leave the brief as it is (an approved one must not flip back to "needs approval")
   await briefs.updateOne({ _id: briefId }, { $push: { shortlist: { $each: added } }, $set: { status: "awaiting_approval", updatedAt: new Date() } });
   const auto = added.length ? await autoApprove(briefId) : null;
   if (added.length && !auto?.ok) await notify(`Shortlist ready: ${brief.client}`, `${added.length} creators to approve. ${auto ? auto.why + " " : ""}Open Campaigns in the dashboard.`);

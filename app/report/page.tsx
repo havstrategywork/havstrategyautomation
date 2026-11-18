@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { db, ownerName } from "@/lib/db";
+import { mine as myBriefs } from "@/lib/briefs";
 import { PageHead } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -11,13 +12,16 @@ const hhmm = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minut
 type Day = {
   hunted: number; queued: number; first: number; follow: number; failed: number; replies: number; claude: number; human: number;
   offers: number; agreed: number; declined: number; escalated: number; runsOk: number; runsBad: number; log: string[];
+  briefs: number; undelivered: number; emails: number; sheets: number; answers: number;
 };
-const blank = (): Day => ({ hunted: 0, queued: 0, first: 0, follow: 0, failed: 0, replies: 0, claude: 0, human: 0, offers: 0, agreed: 0, declined: 0, escalated: 0, runsOk: 0, runsBad: 0, log: [] });
+const blank = (): Day => ({ hunted: 0, queued: 0, first: 0, follow: 0, failed: 0, replies: 0, claude: 0, human: 0, offers: 0, agreed: 0, declined: 0, escalated: 0, runsOk: 0, runsBad: 0, log: [], briefs: 0, undelivered: 0, emails: 0, sheets: 0, answers: 0 });
 type Num = Exclude<keyof Day, "log">;
 const COLS: [Num, string, string][] = [
+  ["briefs", "Briefs in", "New campaign briefs received from the brief chat"],
   ["hunted", "New creators", "Creators added to the database that day (hunted or imported)"],
   ["queued", "DMs queued", "First DMs and follow-ups approved and queued"],
   ["first", "First DMs sent", "First Instagram DMs delivered"],
+  ["undelivered", "Not delivered", "DMs Instagram refused to deliver (creator can't receive our messages)"],
   ["follow", "Follow-ups sent", "Follow-up nudges delivered"],
   ["failed", "Failed", "Queued DMs that failed to send"],
   ["replies", "Replies in", "Messages creators sent us"],
@@ -27,6 +31,9 @@ const COLS: [Num, string, string][] = [
   ["agreed", "Deals agreed", "Creators moved to Agreed"],
   ["declined", "Declined", "Creators moved to Declined"],
   ["escalated", "Escalated", "Chats handed to a human"],
+  ["sheets", "Review sheets", "Client review sheets created for agreed creators"],
+  ["answers", "Client answers", "Client Yes/No answer files uploaded"],
+  ["emails", "Guidelines emails", "Guidelines emails sent to creators the client approved"],
 ];
 
 export default async function Report({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -37,13 +44,18 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
   const by = new Map(keys.map((k) => [k, blank()]));
   const at = (d?: Date | string) => (d ? by.get(dayKey(d)) : undefined);
 
-  const { creators, outreach, messages, runs } = await db();
-  const [cs, os, ms, rs] = await Promise.all([
+  const { creators, outreach, messages, runs, briefs, dealBatches, clients } = await db();
+  const [cs, os, ms, rs, bs, ems, bts, cls] = await Promise.all([
     creators.find({}).toArray(),
     outreach.find({ channel: "ig", $or: [{ createdAt: { $gte: since } }, { sentAt: { $gte: since } }] }).toArray(),
     messages.find({ at: { $gte: since } }).toArray(),
     runs.find({ startedAt: { $gte: since } }).sort({ startedAt: 1 }).toArray(),
+    briefs.find({ $and: [{ $or: [{ createdAt: { $gte: since } }, { updatedAt: { $gte: since } }] }, myBriefs()] }).toArray(),
+    outreach.find({ channel: "email", kind: "guidelines", status: "sent", sentAt: { $gte: since } }).toArray(),
+    dealBatches.find({ $or: [{ createdAt: { $gte: since } }, { answeredAt: { $gte: since } }, { sharedAt: { $gte: since } }] }).toArray(),
+    clients.find({}).toArray(),
   ]);
+  const cname = new Map(cls.map((c) => [String(c._id), c.name]));
 
   // Only this person's creators (OWNER) count for outreach/chat numbers; hunting is shared so it counts everyone's.
   const me = ownerName();
@@ -70,6 +82,18 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
     if (c.declinedAt) { const d = at(c.declinedAt); if (d) { d.declined++; d.log.push(`${hhmm(c.declinedAt)} ${h} declined`); } }
     if (c.needsHuman?.at) { const d = at(c.needsHuman.at); if (d) { d.escalated++; d.log.push(`${hhmm(c.needsHuman.at)} escalated ${h}: ${c.needsHuman.reason}`); } }
   }
+  for (const b of bs) {
+    const n = at(b.createdAt); if (n) { n.briefs++; n.log.push(`${hhmm(b.createdAt)} brief received: ${b.client}`); }
+    const u = b.status === "approved" ? at(b.updatedAt) : undefined; if (u && b.note) u.log.push(`${hhmm(b.updatedAt)} ${b.client}: ${b.note}`);
+  }
+  for (const c of mine.values()) if (c.undeliverable?.at) { const d = at(c.undeliverable.at); if (d) { d.undelivered++; d.log.push(`${hhmm(c.undeliverable.at)} DM to ${c.igHandle ? `@${c.igHandle}` : c.name} not delivered: ${c.undeliverable.reason}`); } }
+  for (const e of ems) { const d = mine.has(String(e.creatorId)) ? at(e.sentAt) : undefined; if (d && e.sentAt) { d.emails++; d.log.push(`${hhmm(e.sentAt)} guidelines emailed to ${who(e.creatorId)}`); } }
+  for (const x of bts) {
+    const nm = cname.get(String(x.clientId)) ?? "client";
+    const a = at(x.createdAt); if (a) { a.sheets++; a.log.push(`${hhmm(x.createdAt)} review sheet created for ${nm} (${x.creatorIds.length} creators)`); }
+    const h = x.sharedAt ? at(x.sharedAt) : undefined; if (h && x.sharedAt) h.log.push(`${hhmm(x.sharedAt)} sheet given to ${nm}`);
+    const r = x.answeredAt ? at(x.answeredAt) : undefined; if (r && x.answeredAt) { r.answers++; r.log.push(`${hhmm(x.answeredAt)} client answers uploaded for ${nm}`); }
+  }
   for (const r of rs) {
     const d = at(r.startedAt); if (!d) continue;
     r.ok ? d.runsOk++ : d.runsBad++;
@@ -84,7 +108,7 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
 
   return (
     <>
-      <PageHead title="Daily report" sub={`Everything done each day (India time) · last ${span} days${me ? ` · ${me}'s creators` : ""}`} />
+      <PageHead title="Daily report" sub={`Everything Claude and the team did each day (India time) · last ${span} days${me ? ` · ${me}'s creators` : ""}`} />
       <div className="row" style={{ marginBottom: "1rem" }}>{[7, 14, 30].map(tab)}</div>
       <div className="tablewrap">
         <table>
@@ -119,7 +143,7 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
           </tfoot>
         </table>
       </div>
-      <p className="small muted" style={{ marginTop: ".75rem" }}>Deals, declines and runs are only counted from the day this report was added; earlier ones have no timestamp.</p>
+      <p className="small muted" style={{ marginTop: ".75rem" }}>Deals, declines, undelivered DMs and runs are only counted from the day they were first recorded; earlier ones have no timestamp.</p>
     </>
   );
 }
