@@ -28,6 +28,8 @@ export type Creator = {
   outreachNotes?: string;
   lastChecked?: Date;
   followUpSentAt?: Date;
+  agreedAt?: Date; // when status became Agreed / Declined (set in PATCH /api/creators/:id), for the daily report
+  declinedAt?: Date;
   needsHuman?: { reason: string; at: Date }; // Claude stops replying until a human resolves this
 };
 export type Client = {
@@ -64,6 +66,7 @@ export type Control = {
   run?: { id: string; kind: string; startedAt: Date }; // active run; considered dead after 20 min
   lastRun?: { kind: string; startedAt: Date; endedAt: Date; ok: boolean; note?: string };
 };
+export type Run = { _id?: ObjectId; kind: string; startedAt: Date; endedAt: Date; ok: boolean; note?: string }; // one row per finished run, for the daily report
 export type Outreach = {
   _id?: ObjectId;
   creatorId: ObjectId;
@@ -126,6 +129,7 @@ export async function db() {
     outreach: d.collection<Outreach>("outreach"),
     messages: d.collection<Message>("messages"),
     control: d.collection<Control>("control"),
+    runs: d.collection<Run>("runs"),
     users: d.collection<User>("users"),
     sessions: d.collection<Session>("sessions"),
     loginAttempts: d.collection<LoginAttempt>("loginAttempts"),

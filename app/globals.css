@@ -456,3 +456,9 @@ details > div { margin-top: .4rem; white-space: pre-wrap; color: var(--text); ma
 .checks li.ok > span { background: var(--good-bg); color: var(--good); }
 .checks li.todo > span { background: var(--warn-bg); color: var(--warn); }
 .checks b { display: block; font-weight: 600; } .checks small { color: var(--muted); font-size: 12.5px; }
+
+/* route-change spinner (app/loading.tsx) */
+.page-loading { display: grid; place-items: center; min-height: 55vh; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }

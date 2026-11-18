@@ -19,7 +19,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const why = overCeiling(parseMoney(set.agreedRate)!, ceiling);
     if (why) return Response.json({ error: `agreedRate ${why}; escalate to a human` }, { status: 422 });
   }
-  const r = await creators.findOneAndUpdate({ _id: new ObjectId(id) }, { $set: set }, { returnDocument: "after" });
+  const stamp = set.status === "Agreed" ? { agreedAt: new Date() } : set.status === "Declined" ? { declinedAt: new Date() } : {};
+  const r = await creators.findOneAndUpdate({ _id: new ObjectId(id) }, { $set: { ...set, ...stamp } }, { returnDocument: "after" });
   if (r && set.status === "Agreed") await notify(`Deal agreed: @${r.igHandle ?? r.name}`, `${r.agreedRate ?? ""} Send the contract/details.`);
   return r ? Response.json(r) : Response.json({ error: "not found" }, { status: 404 });
 }

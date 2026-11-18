@@ -14,7 +14,7 @@ const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["n
 export const metadata = { title: "Havstrategy · Outreach" };
 
 const NAV: { group: string; items: [string, string, IconName][] }[] = [
-  { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"]] },
+  { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
   { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"]] },
   { group: "System", items: [["/automation", "Automation", "bolt"]] },
 ];

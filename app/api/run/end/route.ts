@@ -6,9 +6,10 @@ import { notify } from "@/lib/notify";
 export async function POST(req: Request) {
   const bad = unauthorized(req); if (bad) return bad;
   const b = await req.json().catch(() => ({}));
-  const { control } = await db();
+  const { control, runs } = await db();
   const st = await control.findOne({ _id: "state" });
   if (!st?.run || st.run.id !== b.runId) return Response.json({ error: "no matching active run" }, { status: 404 });
+  await runs.insertOne({ kind: st.run.kind, startedAt: st.run.startedAt, endedAt: new Date(), ok: b.ok !== false, ...(b.note && { note: String(b.note).slice(0, 500) }) });
   await control.updateOne({ _id: "state" }, {
     $unset: { run: "" },
     $set: { lastRun: { kind: st.run.kind, startedAt: st.run.startedAt, endedAt: new Date(), ok: b.ok !== false, ...(b.note && { note: String(b.note).slice(0, 500) }) } },
