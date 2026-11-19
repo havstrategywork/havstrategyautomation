@@ -152,8 +152,9 @@ person sets their own `OWNER` in their own copy of the app.
 2. **briefs run** (Cowork, every 30 min): claims a brief, completes the client (niches/related/locations/offer), drafts a DM if none was given,
    searches + hunts, posts a shortlist. Never queues or sends DMs.
 3. **Approval** (automatic): when the shortlist is posted and the client has a saved `dmTemplate`, the server queues the first DM for every shortlisted creator right then (the user's own saved message, word for word; caps, allowlist and the one-DM-per-creator rule still apply). With no saved message (or `AUTO_APPROVE=off`) a human approves on the Campaigns page, ticking creators and editing the message/follow-up.
-4. **send run** (Cowork, every 2 h): delivers first DMs and due follow-ups (15 per run, 75/day).
-5. **replies run** (Cowork, hourly): logs replies, answers, negotiates within `tierRates`, escalates.
+4. **outreach run** (Cowork, hourly; kind `outreach`, merges the old send+replies runs into one Instagram session): first logs replies, answers and
+   negotiates within `tierRates`, escalates; THEN delivers first DMs and due follow-ups (15 per run, 75/day). Replies run first so a follow-up never
+   fires on a creator who just replied.
 5a. **Client review** (all manual, from the Campaigns page): the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
    native Google Sheet shared with the service account as Editor). A human clicks "Create sheet": a NEW "Content creators" tab is added to that sheet (no link = a fresh sheet is made).
    Nothing is posted anywhere. The human reviews it, gives it to the client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv`
@@ -166,7 +167,7 @@ person sets their own `OWNER` in their own copy of the app.
 
 The three scheduled prompts live in `lib/prompts.ts` and are shown, with the real URL and key filled in, on the dashboard's **Automation** page
 (also a setup checklist and a test-notification button). Rules for EVERY run:
-1. `POST /api/run/start {kind}` first (`briefs` | `send` | `replies`). **423 = paused, 409 = another run is active: stop and do nothing.**
+1. `POST /api/run/start {kind}` first (`briefs` | `outreach`). **423 = paused, 409 = another run is active: stop and do nothing.**
    One run at a time (one Instagram account, one Chrome). A crashed run frees the lock after 20 min (60 min for `briefs`).
 2. If Instagram shows a challenge, action block, "try again later", login wall or anything odd: `POST /api/pause {reason}`, end the run
    with `ok:false`, stop. **There is no API to resume: only a human can, from the dashboard. Never try to work around a pause.**

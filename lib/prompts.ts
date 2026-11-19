@@ -1,12 +1,11 @@
 // The scheduled Claude Cowork prompts. Single source: the /automation page renders them with the real URL + key filled in.
 // Self-contained on purpose (a scheduled Cowork task may not see this repo), so the key rules are repeated here.
 
-export type Kind = "briefs" | "send" | "replies" | "guidelines";
+export type Kind = "briefs" | "outreach" | "guidelines";
 export const SCHEDULES: Record<Kind, { title: string; when: string; what: string }> = {
   briefs: { title: "1. Briefs: find creators", when: "Every 30 minutes, 9:00–21:00", what: "Picks up briefs from the New brief chat, hunts and scores creators, posts a shortlist for you to approve." },
-  send: { title: "2. Send DMs", when: "Every 2 hours, 10:00–20:00", what: "Sends approved first DMs and due follow-ups on Instagram, 15 per run, max 75 a day." },
-  replies: { title: "3. Replies", when: "Every hour, 9:00–22:00", what: "Logs creator replies, answers and negotiates within budget, escalates to you when needed." },
-  guidelines: { title: "4. Guidelines emails", when: "Every hour, 9:00–21:00", what: "Emails the saved guidelines and terms to every creator a client approved (the answers are uploaded by a human on the Campaigns page). No Instagram or Chrome needed." },
+  outreach: { title: "2. Outreach: replies & sends", when: "Every hour, 9:00–22:00", what: "One Instagram pass: logs creator replies, negotiates within budget and escalates, THEN sends due first DMs and follow-ups (15 per run, max 75 a day)." },
+  guidelines: { title: "3. Guidelines emails", when: "Every hour, 9:00–21:00", what: "Emails the saved guidelines and terms to every creator a client approved (the answers are uploaded by a human on the Campaigns page). No Instagram or Chrome needed." },
 };
 
 const header = (kind: Exclude<Kind, "guidelines">, url: string, key: string) => `You are the creator-outreach automation worker (${kind} run). Do one pass, then stop.
@@ -57,34 +56,17 @@ The job: turn ONE new campaign brief into a shortlist. You never queue or send D
 9. End the run (note e.g. "Nuume: 9 shortlisted, 6 hunted"). If the shortlist reply said autoApproved:true the DMs are already queued for the send run; if not, the human gets a notification and approves on the Campaigns page.`;
 }
 
-export function sendPrompt(url: string, key: string) {
-  return `${header("send", url, key)}
+export function outreachPrompt(url: string, key: string) {
+  return `${header("outreach", url, key)}
 
-The job: deliver queued Instagram DMs (approved first DMs, and follow-ups that are due). Instagram must be logged in to the brand account in this Chrome.
+The job: ONE Instagram session, two parts in order — first catch up on replies and negotiate, THEN send what's now safely due. Doing replies
+first means a follow-up never goes out to someone who just replied (their reply gets logged and cancels it before part B looks at the queue).
+You write as the brand's marketing team. You are an AI assistant working with that team.
 
-1. GET /api/outreach/next?limit=15. If "items" is empty: end the run (ok:true, note "nothing to send") and stop.
-2. For each item {id, igUrl, message, followUp}, one at a time:
-   - Open igUrl in a new tab and click Message (it opens the existing chat if there is one). Scroll to the end of the chat.
-   - followUp false (a first DM): if our account has ALREADY messaged this creator, don't send. Report
-     POST /api/outreach/<id>/sent {"ok":false,"error":"already contacted"}. Otherwise type the message EXACTLY as given
-     (no edits, no additions), send it, then check it appears in the chat WITHOUT a "not delivered", "couldn't send" or "this account can't receive your message" marker.
-     Only then POST /api/outreach/<id>/sent {"ok":true}; if it shows one of those markers, report {"ok":false,"error":"not delivered: <the text shown>"}.
-   - followUp true (one of up to 4 follow-ups): our first DM should already be in the chat. If the creator has replied at all, or any conversation is going on (they wrote to us, or a person answered them), don't send:
-     report {"ok":false,"error":"creator replied"}. If our last message in the chat is less than 20 hours old, report {"ok":false,"error":"too soon"}.
-     Otherwise type it EXACTLY, send, then report {"ok":true}.
-   - No Message button, private account or can't DM: report {"ok":false,"error":"<why>"} and continue (not a block).
-   - A 429 from /sent means the daily cap (75) is reached: stop sending and end the run.
-   - Wait a random 60-180 seconds between DMs. Never send anything the server didn't hand you. Never retry a sent item.
-3. End the run (note "<n> sent (<n> follow-ups), <n> failed").`;
-}
-
-export function repliesPrompt(url: string, key: string) {
-  return `${header("replies", url, key)}
-
-The job: handle Instagram replies from creators we've messaged. You write as the brand's marketing team. You are an AI assistant working with that team.
+PART A — Replies and negotiation
 
 1. GET /api/conversations?view=watch. These are the ONLY creators whose Instagram chats you may open (a batch of up to 15 per run; the rest come on later runs).
-   If the list is empty, end the run ok:true "nothing to watch". NEVER search or scroll the Instagram inbox: it is shared with other clients and shows display
+   If the list is empty, skip to PART B. NEVER search or scroll the Instagram inbox: it is shared with other clients and shows display
    names, not handles, so you would match the wrong person. For each entry open its "igUrl" (the creator's profile) in a tab and click Message: that opens
    exactly their existing chat. Confirm the chat header shows that same handle/profile before reading it.
    If OUR first message in that chat shows a "not delivered", "couldn't send" or "can't receive your message" marker, POST
@@ -101,7 +83,6 @@ The job: handle Instagram replies from creators we've messaged. You write as the
 5. GET /api/messages/next. Before typing each reply, look at the END of that chat. If the last message isn't the creator's, or a newer
    creator message arrived: POST /api/messages/<id>/sent {"ok":false,"error":"thread moved on"}. Otherwise send it in the existing chat and
    POST /api/messages/<id>/sent {"ok":true}. Wait a random 20-90 seconds between replies.
-6. End the run (note "<n> logged, <n> sent, <n> escalated").
 
 How to talk: short, warm, specific to what they said. Write as the brand's marketing team, not a named person. Don't mention being an AI
 unprompted, but if a creator sincerely asks whether they're talking to a bot/AI/real person, say honestly that you're an AI assistant working
@@ -124,7 +105,28 @@ Escalate (POST /api/conversations/<creatorId>/escalate {"reason":"..."}, then st
 usage rights, invoicing; a deal agreed; upset/hostile creators or anyone asking for a human; anything the offer doesn't cover; when unsure;
 an agent/manager taking over; off-topic or spam.
 Stop signals ("stop", "not interested", "unsubscribe"): reply once with a short polite close, PATCH /api/creators/<creatorId>
-{"status":"Declined"}, and never message them again.`;
+{"status":"Declined"}, and never message them again.
+
+PART B — Send due DMs and follow-ups
+
+Only after PART A: by now the DB has today's replies logged, so a follow-up can't fire on someone who just replied. Instagram must be logged
+in to the brand account in this Chrome.
+
+6. GET /api/outreach/next?limit=15. If "items" is empty: skip to step 9.
+7. For each item {id, igUrl, message, followUp}, one at a time:
+   - Open igUrl in a new tab and click Message (it opens the existing chat if there is one). Scroll to the end of the chat.
+   - followUp false (a first DM): if our account has ALREADY messaged this creator, don't send. Report
+     POST /api/outreach/<id>/sent {"ok":false,"error":"already contacted"}. Otherwise type the message EXACTLY as given
+     (no edits, no additions), send it, then check it appears in the chat WITHOUT a "not delivered", "couldn't send" or "this account can't receive your message" marker.
+     Only then POST /api/outreach/<id>/sent {"ok":true}; if it shows one of those markers, report {"ok":false,"error":"not delivered: <the text shown>"}.
+   - followUp true (one of up to 4 follow-ups): our first DM should already be in the chat. If the creator has replied at all, or any conversation is going on (they wrote to us, or a person answered them), don't send:
+     report {"ok":false,"error":"creator replied"}. If our last message in the chat is less than 20 hours old, report {"ok":false,"error":"too soon"}.
+     Otherwise type it EXACTLY, send, then report {"ok":true}.
+   - No Message button, private account or can't DM: report {"ok":false,"error":"<why>"} and continue (not a block).
+   - A 429 from /sent means the daily cap (75) is reached: stop sending and go to step 9.
+   - Wait a random 60-180 seconds between DMs. Never send anything the server didn't hand you. Never retry a sent item.
+8. (handled inside step 7's loop)
+9. End the run ONCE for both parts: POST /api/run/end {"runId":"<id>","ok":true|false,"note":"<n> logged, <n> replied, <n> escalated; <n> first DMs sent, <n> follow-ups, <n> failed"}.`;
 }
 
 // No Instagram here, so no /api/run/start: that lock and the pause switch exist for the one Instagram account and must not block emails.
@@ -150,4 +152,4 @@ Rules: never write, edit, shorten or send an email yourself; the guidelines and 
 creators, emails, rates or terms. If the call fails (non-200), report the status and error text and stop. Don't trigger browser alert/confirm dialogs.`;
 }
 
-export const PROMPTS: Record<Kind, (url: string, key: string) => string> = { briefs: briefsPrompt, send: sendPrompt, replies: repliesPrompt, guidelines: guidelinesPrompt };
+export const PROMPTS: Record<Kind, (url: string, key: string) => string> = { briefs: briefsPrompt, outreach: outreachPrompt, guidelines: guidelinesPrompt };

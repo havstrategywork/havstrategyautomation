@@ -2,7 +2,7 @@
 import assert from "node:assert";
 import { nextStep, stepTexts, UNDELIVERED } from "./followup.ts";
 import { clientFieldsFromBrief } from "./brief.ts";
-import { briefsPrompt, guidelinesPrompt, repliesPrompt, sendPrompt } from "./prompts.ts";
+import { briefsPrompt, guidelinesPrompt, outreachPrompt } from "./prompts.ts";
 
 const now = Date.UTC(2026, 10, 20), day = 864e5;
 const sent = (daysAgo: number) => ({ dmSentAt: new Date(now - daysAgo * day), status: "DM Sent" });
@@ -40,7 +40,7 @@ assert.equal(f.dmTemplate, "Hi {{name}}!");
 assert.equal("followUpTemplate" in f, false); // empty follow-up = none, not an empty template
 assert.throws(() => clientFieldsFromBrief({ client: "x", currency: "INR", other: "", message: "", followUp: "", products: [], rows: [] }), /creator row/);
 
-for (const [kind, p] of [["briefs", briefsPrompt], ["send", sendPrompt], ["replies", repliesPrompt]] as const) {
+for (const [kind, p] of [["briefs", briefsPrompt], ["outreach", outreachPrompt]] as const) {
   const t = p("https://app.example", "k-123");
   assert.match(t, /App: https:\/\/app\.example\nAPI key: k-123/, kind);
   assert.ok(t.includes(`POST /api/run/start {"kind":"${kind}"}`), kind);
@@ -50,5 +50,7 @@ for (const [kind, p] of [["briefs", briefsPrompt], ["send", sendPrompt], ["repli
 const g = guidelinesPrompt("u", "k");
 assert.ok(g.includes("POST /api/deals/run") && !g.includes("/api/run/start"), "guidelines run uses no Instagram lock");
 assert.ok(!briefsPrompt("u", "k").includes("/api/outreach {"), "briefs run must never queue DMs");
-assert.ok(sendPrompt("u", "k").includes('"error":"creator replied"'), "follow-up must check for a reply first");
+const o = outreachPrompt("u", "k");
+assert.ok(o.includes('"error":"creator replied"'), "follow-up must check for a reply first");
+assert.ok(o.indexOf("PART A") < o.indexOf("PART B") && o.indexOf("PART B") < o.lastIndexOf("POST /api/run/end"), "replies must run before sends, and the run ends once at the end of both");
 console.log("automation ok");

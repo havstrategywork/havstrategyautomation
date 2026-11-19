@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { controlState, LONG_RUN_TTL_MS, RUN_TTL_MS } from "@/lib/control";
 
 // Every scheduled run calls this FIRST. 423 = paused (stop, do nothing). 409 = another run is active (stop).
-// body: { kind: "replies" | "send" | "briefs" }. One run at a time: they share one Instagram account and one Chrome.
+// body: { kind: "outreach" | "briefs" }. One run at a time: they share one Instagram account and one Chrome.
 export async function POST(req: Request) {
   const bad = unauthorized(req); if (bad) return bad;
   const { kind = "run" } = await req.json().catch(() => ({}));
