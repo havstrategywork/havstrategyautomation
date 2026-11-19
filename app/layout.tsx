@@ -28,7 +28,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
         {!user ? children : (
           <div className="shell">
             <aside className="side">
-              <div className="brand"><div className="logo"><Icon name="spark" /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
+              <div className="brand"><div className="logo"><img src="/havstrategy-logo.svg" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
               <nav aria-label="Main">
                 {NAV.map((g) => (
                   <div key={g.group} className="nav-group">
