@@ -6,7 +6,8 @@ import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
 import { readyDeals } from "@/lib/deals";
-import { approveBrief, archiveBrief, createSheetAction, findMore, markSharedAction, saveGuidelinesAction, sendGuidelinesAction, uploadAnswersAction } from "./actions";
+import { approveBrief, archiveBrief, createSheetAction, findMore, markSharedAction, saveFollowEmailsAction, saveGuidelinesAction, sendDeadlineAction, sendGuidelinesAction, sendScriptReminderAction, uploadAnswersAction } from "./actions";
+import { daysLabel, daysLeft } from "@/lib/dealrules";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,13 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
         const mineBatches = batches.filter((b) => String(b.clientId) === cid);
         const rows = onSheet.filter((c) => String(c.dealClientId) === cid);
         const toSend = rows.filter((c) => c.clientDecision === "yes" && !c.guidelinesSentAt).length;
+        // after the guidelines: script reminder (once each) and the deadline email (at most once a day each)
+        const briefed = rows.filter((c) => c.clientDecision === "yes" && c.guidelinesSentAt);
+        const dayAgo = Date.now() - 20 * 3600_000;
+        const toScript = briefed.filter((c) => !c.scriptReminderSentAt).length;
+        const toDeadline = briefed.filter((c) => !c.deadlineEmailAt || new Date(c.deadlineEmailAt).getTime() < dayAgo).length;
+        const left = daysLeft(cl?.contentDeadline);
+        const tone = left === null ? "" : left < 0 ? "bad" : left <= 2 ? "warn" : "good";
         const n = waiting.get(cid)?.length ?? 0;
         return (
           <section key={cid} className="card campaign">
@@ -84,7 +92,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
             {rows.length > 0 && (
               <div className="tablewrap" style={{ marginTop: "1rem" }}>
                 <table>
-                  <thead><tr><th>Creator</th><th className="num">Agreed rate</th><th>Client says</th><th>Note</th><th>Guidelines</th></tr></thead>
+                  <thead><tr><th>Creator</th><th className="num">Agreed rate</th><th>Client says</th><th>Note</th><th>Guidelines</th><th>Script reminder</th><th>Deadline email</th></tr></thead>
                   <tbody>{rows.map((c) => (
                     <tr key={String(c._id)}>
                       <td><Link href={`/creators/${c._id}`}><b>{c.igHandle ? `@${c.igHandle}` : c.name}</b></Link></td>
@@ -92,6 +100,8 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                       <td>{c.clientDecision === "yes" ? "Yes" : c.clientDecision === "no" ? "No" : "Waiting"}</td>
                       <td className="small muted">{c.clientNote}</td>
                       <td className="small">{c.guidelinesSentAt ? `Sent ${ago(c.guidelinesSentAt)}` : c.clientDecision === "yes" ? (c.email ? "Ready" : "No email on file") : ""}</td>
+                      <td className="small">{c.scriptReminderSentAt ? `Sent ${ago(c.scriptReminderSentAt)}` : c.guidelinesSentAt ? "Ready" : ""}</td>
+                      <td className="small">{c.deadlineEmailAt ? `Sent ${ago(c.deadlineEmailAt)}` : c.guidelinesSentAt ? "Ready" : ""}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -105,6 +115,34 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button formAction={saveGuidelinesAction} className="ghost">Save email</button>
                 {toSend > 0 && <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>}
+              </div>
+            </form>
+
+            <form className="form follow-emails" style={{ marginTop: "1rem" }}>
+              <input type="hidden" name="id" value={cid} />
+              <div className="row spread">
+                <b>After the guidelines</b>
+                <label className="row deadline-pick">Content deadline
+                  <input type="date" name="contentDeadline" defaultValue={cl?.contentDeadline ?? ""} />
+                  {left !== null && <span className={`days-pill ${tone}`}>{daysLabel(left)}</span>}
+                </label>
+              </div>
+              <label>Script reminder email (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} {"{{deadline}}"} {"{{days}}"} are filled in)
+                <textarea name="script" rows={6} defaultValue={cl?.scriptReminderTemplate ?? ""} placeholder={"Subject: Reminder: your script for [Brand] x @{{handle}}\n\nHi {{name}}, a quick reminder to share your script with us for approval. Content is due on {{deadline}} ({{days}} to go)."} />
+              </label>
+              <label>Deadline email (sent as the date gets closer; can go once a day)
+                <textarea name="deadlineEmail" rows={6} defaultValue={cl?.deadlineTemplate ?? ""} placeholder={"Subject: {{days}} left: [Brand] x @{{handle}} content deadline\n\nHi {{name}}, just a heads-up that your content is due on {{deadline}}, {{days}} from today."} />
+              </label>
+              <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <button formAction={saveFollowEmailsAction} className="ghost">Save emails</button>
+                <button formAction={sendScriptReminderAction} disabled={!toScript || !cl?.scriptReminderTemplate}
+                  title={!briefed.length ? "Send the guidelines first" : !cl?.scriptReminderTemplate ? "Save the script reminder email first" : !toScript ? "Everyone already got it" : undefined}>
+                  Send script reminder to {toScript} creator{toScript === 1 ? "" : "s"}
+                </button>
+                <button formAction={sendDeadlineAction} className={`deadline-btn ${tone}`} disabled={!toDeadline || !cl?.deadlineTemplate || left === null}
+                  title={!briefed.length ? "Send the guidelines first" : left === null ? "Set the content deadline first" : !cl?.deadlineTemplate ? "Save the deadline email first" : !toDeadline ? "Everyone got it in the last day" : undefined}>
+                  Send deadline email{left !== null ? ` · ${daysLabel(left)}` : ""} ({toDeadline})
+                </button>
               </div>
             </form>
           </section>

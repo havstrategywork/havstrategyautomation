@@ -40,6 +40,8 @@ export type Creator = {
   clientNote?: string;
   decidedAt?: Date;
   guidelinesSentAt?: Date; // the guidelines email went out; later sheet changes are ignored
+  scriptReminderSentAt?: Date; // script reminder email went out (once per creator, only after guidelines)
+  deadlineEmailAt?: Date; // last deadline email (at most one per creator per day, only after guidelines)
 };
 export type Client = {
   _id?: ObjectId;
@@ -52,6 +54,9 @@ export type Client = {
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
   sheetUrl?: string; // the client's own Google Sheet (from the brief): each review batch becomes a new "Content creators" tab in it
   guidelinesTemplate?: string; // email sent to creators the client said Yes to. First line "Subject: ..."; {{name}} {{handle}} {{rate}} are filled in
+  scriptReminderTemplate?: string; // sent after guidelines: reminds the creator to send their script. Same format; also {{deadline}} {{days}}
+  deadlineTemplate?: string; // sent after guidelines: content deadline reminder. Same format; also {{deadline}} {{days}}
+  contentDeadline?: string; // "YYYY-MM-DD": the date the creators' content is due; the dashboard shows the days remaining
   followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
@@ -83,7 +88,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup" | "guidelines"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  kind?: "first" | "followup" | "guidelines" | "script" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;
