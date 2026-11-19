@@ -31,6 +31,7 @@ export default async function Dashboard() {
   const [
     needsYou, nCreators, igQueued, ig, byStatus, recent, perDay, awaiting, escalated,
     nBrands, brandsList, influencersList, followupsToday, followupsList, offersCount, offersList, dealsList,
+    guidelinesCount, guidelinesList,
   ] = await Promise.all([
     creators.countDocuments({ needsHuman: { $exists: true } }), creators.countDocuments(),
     outreach.countDocuments({ channel: "ig", status: "queued" }), sentToday("ig"),
@@ -51,6 +52,8 @@ export default async function Dashboard() {
     creators.countDocuments(offersFilter),
     creators.find(offersFilter).sort({ lastChecked: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; quotedRate?: string; status?: string }>({ name: 1, igHandle: 1, quotedRate: 1, status: 1 }).toArray(),
     creators.find({ status: "Agreed" }).sort({ agreedAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; agreedRate?: string; agreedAt?: Date }>({ name: 1, igHandle: 1, agreedRate: 1, agreedAt: 1 }).toArray(),
+    creators.countDocuments({ guidelinesSentAt: { $exists: true } }),
+    creators.find({ guidelinesSentAt: { $exists: true } }).sort({ guidelinesSentAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; guidelinesSentAt?: Date }>({ name: 1, igHandle: 1, guidelinesSentAt: 1 }).toArray(),
   ]);
   const count = new Map(byStatus.map((s) => [s._id, s.n]));
   const c = (s: string) => count.get(s) ?? 0;
@@ -60,28 +63,31 @@ export default async function Dashboard() {
   const people = new Map((await creators.find({ _id: { $in: recent.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
   const followupPeople = new Map((await creators.find({ _id: { $in: followupsList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
 
-  const pct = (cur: number, prev: number) => (prev ? Math.round((cur / prev) * 100) : null);
   const dealsAgreed = c("Agreed");
   const funnelStages: FunnelStage[] = [
     {
-      key: "brands", label: "Total brands", icon: "briefcase", count: nBrands, pct: null, emptyText: "No clients yet.",
+      key: "brands", label: "Total brands", icon: "briefcase", count: nBrands, emptyText: "No clients yet.",
       items: brandsList.map((b) => ({ id: String(b._id), title: b.name, meta: [b.niches?.slice(0, 3).join(", "), b.locations?.slice(0, 2).join(", ")].filter(Boolean).join(" · ") || undefined, right: b.maxRate, href: "/creators" })),
     },
     {
-      key: "influencers", label: "Total influencers", icon: "users", count: nCreators, pct: pct(nCreators, nBrands), emptyText: "No creators yet.",
+      key: "influencers", label: "Total influencers", icon: "users", count: nCreators, emptyText: "No creators yet.",
       items: influencersList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle} · ${p.followers.toLocaleString("en-IN")} followers` : `${p.followers.toLocaleString("en-IN")} followers`, right: p.status ?? "New", href: `/creators/${p._id}` })),
     },
     {
-      key: "followups", label: "Follow-ups sent today", icon: "send", count: followupsToday, pct: pct(followupsToday, nCreators), emptyText: "None sent today yet.",
+      key: "followups", label: "Follow-ups sent today", icon: "send", count: followupsToday, emptyText: "None sent today yet.",
       items: followupsList.map((o) => { const p = followupPeople.get(String(o.creatorId)); return { id: String(o._id), title: p?.name ?? "Unknown", meta: p?.igHandle ? `@${p.igHandle}` : undefined, right: ago(o.sentAt), href: p ? `/creators/${o.creatorId}` : undefined }; }),
     },
     {
-      key: "offers", label: "Offers", icon: "bolt", count: offersCount, pct: pct(offersCount, followupsToday), emptyText: "No offers in play.",
+      key: "offers", label: "Offers", icon: "bolt", count: offersCount, emptyText: "No offers in play.",
       items: offersList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.quotedRate ?? p.status, href: `/creators/${p._id}` })),
     },
     {
-      key: "deals", label: "Deals agreed", icon: "handshake", count: dealsAgreed, pct: pct(dealsAgreed, offersCount), emptyText: "No deals agreed yet.",
+      key: "deals", label: "Deals agreed", icon: "handshake", count: dealsAgreed, emptyText: "No deals agreed yet.",
       items: dealsList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.agreedRate ?? ago(p.agreedAt), href: `/creators/${p._id}` })),
+    },
+    {
+      key: "guidelines", label: "Guideline emails", icon: "inbox", count: guidelinesCount, emptyText: "No guideline emails sent yet.",
+      items: guidelinesList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: ago(p.guidelinesSentAt), href: `/creators/${p._id}` })),
     },
   ];
 

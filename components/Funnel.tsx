@@ -1,13 +1,11 @@
 "use client";
 // The dashboard's outreach funnel. Each stage is a button: click it to drill into the list behind that number.
-// Percentages shown between stages are "this stage's count ÷ the previous stage's count", so they read as a
-// step-by-step conversion rate down the funnel, not a share of the total.
 import { useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "./ui";
 
 export type FunnelItem = { id: string; title: string; meta?: string; right?: string; href?: string };
-export type FunnelStage = { key: string; label: string; icon: IconName; count: number; pct: number | null; items: FunnelItem[]; emptyText: string };
+export type FunnelStage = { key: string; label: string; icon: IconName; count: number; items: FunnelItem[]; emptyText: string };
 
 export default function Funnel({ stages }: { stages: FunnelStage[] }) {
   const [open, setOpen] = useState<string | null>(null);
@@ -21,7 +19,6 @@ export default function Funnel({ stages }: { stages: FunnelStage[] }) {
             {i > 0 && (
               <div className="funnel-conn">
                 <Icon name="arrow" size={16} />
-                {s.pct !== null && <span>{s.pct}%</span>}
               </div>
             )}
             <button
