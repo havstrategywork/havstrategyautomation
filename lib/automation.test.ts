@@ -46,6 +46,7 @@ for (const [kind, p] of [["briefs", briefsPrompt], ["outreach", outreachPrompt]]
   assert.ok(t.includes(`POST /api/run/start {"kind":"${kind}"}`), kind);
   assert.ok(t.includes("POST /api/run/end"), kind);
   assert.ok(t.includes("POST /api/pause"), kind);
+  assert.ok(t.includes("Read pages as text first"), `${kind} must default to cheap text reads over screenshots`);
 }
 const g = guidelinesPrompt("u", "k");
 assert.ok(g.includes("POST /api/deals/run") && !g.includes("/api/run/start"), "guidelines run uses no Instagram lock");

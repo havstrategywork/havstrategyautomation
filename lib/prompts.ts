@@ -22,7 +22,8 @@ Rules for EVERY run:
 4. Never invent creators, handles, follower counts, emails, prices, dates or terms. Leave out anything you can't verify.
 5. A 403 "belongs to another person" means a teammate owns that creator: skip them and never open their thread.
 6. Not finding a chat is NOT a reason to pause: pausing is only for Instagram restrictions (rule 2). Skip that creator and mention it in the run note.
-7. Don't trigger browser alert/confirm dialogs. If a tool keeps failing after 2-3 tries, end the run with ok:false and say why in the note.`;
+7. Don't trigger browser alert/confirm dialogs. If a tool keeps failing after 2-3 tries, end the run with ok:false and say why in the note.
+8. Read pages as text first — it's far cheaper and almost always enough (chat contents, timestamps, button labels, "not delivered"/challenge banners, who's online). Only take a screenshot when text genuinely can't tell you what you need. Click and type by matching text/elements, not by visually hunting for coordinates.`;
 
 export function briefsPrompt(url: string, key: string) {
   return `${header("briefs", url, key)}
