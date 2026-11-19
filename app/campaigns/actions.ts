@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
-import { mine, queueShortlist, submitBrief } from "@/lib/briefs";
-import type { BriefInput } from "@/lib/brief";
+import { editBrief, mine, queueShortlist, submitBrief } from "@/lib/briefs";
+import { docIdFromUrl, type BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
 import { render } from "@/lib/template";
 import { applyAnswers, createBatch, markShared, sendGuidelines } from "@/lib/deals";
@@ -29,6 +29,17 @@ export async function submitBriefAction(b: BriefInput): Promise<{ ok: true; id: 
     const id = await submitBrief(b);
     revalidatePath("/campaigns");
     return { ok: true, id: String(id) };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+
+/** Same shape as submitBriefAction, but for an existing campaign (BriefChat reuses itself in "edit" mode). */
+export async function editBriefAction(id: string, b: BriefInput): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireUser();
+  try {
+    if (!ObjectId.isValid(id)) throw new Error("bad id");
+    await editBrief(new ObjectId(id), b);
+    revalidatePath("/campaigns");
+    return { ok: true };
   } catch (e) { return { ok: false, error: (e as Error).message }; }
 }
 
@@ -97,9 +108,12 @@ export async function saveGuidelinesAction(fd: FormData) {
     const cl = await (await db()).clients.findOne({ _id: idOf(fd) });
     if (!cl) throw new Error("client not found");
     const t = String(fd.get("guidelines") ?? "").trim();
-    try { render(t || "x", { name: "Sam", handle: "sam", rate: "10k INR" }); } catch (e) { throw new Error(`${(e as Error).message}. Only {{name}}, {{handle}} and {{rate}} can be filled in.`); }
-    await upsertClient({ name: cl.name, guidelinesTemplate: t });
-    return "Guidelines email saved.";
+    try { render(t || "x", { name: "Sam", handle: "sam", rate: "10k INR", brand: cl.name }); } catch (e) { throw new Error(`${(e as Error).message}. Only {{name}}, {{handle}}, {{rate}} and {{brand}} can be filled in.`); }
+    const termsDocUrl = String(fd.get("termsDocUrl") ?? "").trim();
+    const termsDocId = termsDocUrl ? docIdFromUrl(termsDocUrl) : null;
+    if (termsDocUrl && !termsDocId) throw new Error("the terms doc link must be a Google Docs link (docs.google.com/document/d/...)");
+    await upsertClient({ name: cl.name, guidelinesTemplate: t, termsDocId: termsDocId ?? "" });
+    return "Guidelines saved.";
   });
 }
 
@@ -122,4 +136,15 @@ export async function archiveBrief(fd: FormData) {
   await requireUser();
   await (await db()).briefs.updateOne({ _id: idOf(fd), ...mine() }, { $set: { status: "archived", updatedAt: new Date() } });
   revalidatePath("/campaigns");
+}
+
+/** Permanent. Only an already-archived campaign can be deleted, so there's always an undo-able step first. Doesn't touch the creators,
+ *  outreach or messages it produced -- those stay in the system on their own. */
+export async function deleteBrief(fd: FormData) {
+  await requireUser();
+  await back(async () => {
+    const r = await (await db()).briefs.deleteOne({ _id: idOf(fd), status: "archived", ...mine() });
+    if (!r.deletedCount) throw new Error("archive the campaign first, then delete it");
+    return "Campaign deleted.";
+  });
 }

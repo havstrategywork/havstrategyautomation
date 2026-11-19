@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb";
 import nodemailer from "nodemailer";
 import { db, inScope, sentToday, type Creator } from "./db";
 import { tierOf } from "./fields";
-import { addTab, createSheet } from "./sheet";
+import { addTab, createSheet, mergeDocToPdf } from "./sheet";
 import { emailAllowed, handleKey, parseRows, splitSubject } from "./dealrules";
 import { sheetIdFromUrl } from "./brief";
 import { firstName, render } from "./template";
@@ -98,7 +98,7 @@ export async function sendGuidelines(clientId: ObjectId) {
   const { clients, creators, outreach } = await db();
   const cl = await clients.findOne({ _id: clientId });
   if (!cl?.guidelinesTemplate) throw new Error("save the guidelines email for this client first");
-  render(cl.guidelinesTemplate, { name: "x", handle: "x", rate: "x" }); // fail early on a bad placeholder
+  render(cl.guidelinesTemplate, { name: "x", handle: "x", rate: "x", brand: "x" }); // fail early on a bad placeholder
   const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD are not set");
   const mail = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
@@ -110,9 +110,16 @@ export async function sendGuidelines(clientId: ObjectId) {
     if (!emailAllowed(c.email, process.env.EMAIL_ALLOWLIST)) { res.blocked++; continue; }
     if ((await sentToday("email")) >= cap) { res.capped = true; break; }
     if (!(await creators.findOneAndUpdate({ _id: c._id, guidelinesSentAt: { $exists: false } }, { $set: { guidelinesSentAt: new Date() } }))) continue; // someone else just sent it
-    const { subject, body } = splitSubject(render(cl.guidelinesTemplate, { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "" }));
+    const vars = { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "", brand: cl.name };
+    const { subject, body } = splitSubject(render(cl.guidelinesTemplate, vars));
+    const attachments: { filename: string; path?: string; content?: Buffer }[] = [];
+    if (cl.guidelinesFileUrl) attachments.push({ filename: cl.guidelinesFileName || "Brand guidelines.pdf", path: cl.guidelinesFileUrl });
+    if (cl.termsDocId) {
+      try { attachments.push({ filename: "Terms.pdf", content: await mergeDocToPdf(cl.termsDocId, vars) }); }
+      catch (e) { await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind: "terms", message: "", status: "failed", error: `terms doc: ${(e as Error).message}`.slice(0, 200), createdAt: new Date() }); }
+    }
     try {
-      await mail.sendMail({ from: user, to: c.email, subject, text: body });
+      await mail.sendMail({ from: user, to: c.email, subject, text: body, attachments });
       await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind: "guidelines", subject, message: body, status: "sent", createdAt: new Date(), sentAt: new Date() });
       res.sent++;
     } catch (e) {

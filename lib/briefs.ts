@@ -24,6 +24,22 @@ export async function submitBrief(raw: BriefInput) {
   return (await (await db()).briefs.insertOne(doc)).insertedId;
 }
 
+/** Edits an existing campaign's core details and re-syncs the client's budgets/follower-range/message fields from them.
+ *  Updates the client by its known id, not by name (upsertClient matches by name, which would create a stray second client if the brand name changed here). */
+export async function editBrief(briefId: ObjectId, raw: BriefInput) {
+  const b: BriefInput = {
+    client: clip(raw.client, 80), currency: clip(raw.currency, 5) || "INR", other: clip(raw.other, 2000), message: clip(raw.message, 2000), followUp: clip(raw.followUp, 4000), sheetUrl: clip(raw.sheetUrl, 300).trim() || undefined,
+    products: (raw.products ?? []).slice(0, 20).map((p) => ({ name: clip(p.name, 80).trim(), about: clip(p.about, 200).trim() })).filter((p) => p.name),
+    rows: cleanRows((raw.rows ?? []).slice(0, 5).map((r) => ({ tier: clip(r.tier, 12), count: Math.floor(Number(r.count)) || 0, budget: Number(r.budget) || 0 }))),
+  };
+  if (!b.products.length) throw new Error("add at least one product");
+  const { briefs, clients } = await db();
+  const existing = await briefs.findOne({ _id: briefId, ...mine() });
+  if (!existing) throw new Error("campaign not found");
+  if (existing.clientId) await clients.updateOne({ _id: existing.clientId }, { $set: clientFieldsFromBrief(b) });
+  await briefs.updateOne({ _id: briefId }, { $set: { ...b, updatedAt: new Date() } });
+}
+
 export const STALE_MS = 90 * 60e3; // a "shortlisting" claim older than this belongs to a crashed run
 export const mine = () => (ownerName() ? { $or: [{ owner: ownerName() }, { owner: { $exists: false } }] } : {});
 

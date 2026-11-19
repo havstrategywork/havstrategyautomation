@@ -52,6 +52,9 @@ export type Client = {
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
   sheetUrl?: string; // the client's own Google Sheet (from the brief): each review batch becomes a new "Content creators" tab in it
   guidelinesTemplate?: string; // email sent to creators the client said Yes to. First line "Subject: ..."; {{name}} {{handle}} {{rate}} are filled in
+  guidelinesFileUrl?: string; // static brand guidelines/deck (PDF or PPTX), same for every creator; attached as-is to the guidelines email
+  guidelinesFileName?: string;
+  termsDocId?: string; // master Terms Google Doc id ({{name}}/{{brand}} placeholders); merged + exported to a personalized PDF per creator
   followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
@@ -83,7 +86,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup" | "guidelines"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  kind?: "first" | "followup" | "guidelines" | "terms"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator. "terms" = the per-creator Doc merge failed (see sendGuidelines)
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;

@@ -162,11 +162,15 @@ person sets their own `OWNER` in their own copy of the app.
    client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv` ("Upload client's answers";
    for an `.xlsx` the first tab with a Decision column is read, rows match by id or Instagram handle). That is the only way Yes/No enters the app: the app
    never reads the Google Sheet and never posts to Slack. The guidelines/terms email itself (`guidelinesTemplate`) is written and saved on the Campaigns
-   page per campaign, any time — not only once a deal is agreed.
+   page per campaign, any time — not only once a deal is agreed. From there a human can also download that review sheet as a real `.xlsx` file
+   ("Download .xlsx" next to "open sheet"), and edit a campaign's own details (products, creator rows/budgets, currency, other requirements, sheet
+   link — same form as the "New brief" chat) or delete it (only once archived; the creators/outreach/messages it produced are untouched).
 5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` first pushes agreed deals into every client's own sheet that already has a `sheetUrl`
    (skips clients with none), then emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
-   who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply).
-   Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
+   who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply). That email can also carry two attachments, both optional and set on
+   the Campaigns page: a static brand-guidelines/deck file (PDF/PPTX, uploaded once via UploadThing, same for every creator) and a personalized Terms
+   PDF (a master Google Doc with `{{name}}`/`{{brand}}` placeholders, copied and merged per creator via the Docs API, then exported to PDF and the
+   copy deleted). Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
 6. **Notifications** (`NOTIFY_URL`: ntfy topic, Discord or Slack webhook): pause, failed run/brief, shortlist ready, escalation, deal agreed.
 
 The three scheduled prompts live in `lib/prompts.ts` and are shown, with the real URL and key filled in, on the dashboard's **Automation** page
