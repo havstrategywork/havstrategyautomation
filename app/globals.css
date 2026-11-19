@@ -373,6 +373,36 @@ details > div { margin-top: .4rem; white-space: pre-wrap; color: var(--text); ma
 .col:hover::before { content: ""; position: absolute; inset: 0 0 0; background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 6px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+/* ---------- funnel ---------- */
+.funnel { margin-bottom: 1.5rem; }
+.funnel-row { display: flex; align-items: center; gap: .35rem; }
+.funnel-item { display: flex; align-items: center; gap: .35rem; flex: 1 1 0; min-width: 0; }
+.funnel-stage {
+  flex: 1; width: 100%; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .55rem;
+  background: var(--surface); background-image: none; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 1.1rem 1.2rem; color: var(--text); box-shadow: var(--shadow); text-align: left; cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.funnel-stage:hover { filter: none; border-color: var(--border-strong); box-shadow: var(--shadow-lift); transform: translateY(-2px); }
+.funnel-stage.active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-lift); }
+.funnel-stage .ico { background: var(--accent-weak); color: var(--accent); }
+.funnel-num { font-size: 28px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1; }
+.funnel-label { font-size: 12.5px; color: var(--muted); font-weight: 550; }
+.funnel-conn { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: .1rem; color: var(--muted); min-width: 46px; }
+.funnel-conn svg { opacity: .5; }
+.funnel-conn span { font-size: 11.5px; font-weight: 650; color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.funnel-panel { margin-top: 1rem; }
+.funnel-list li .t { font-size: 12.5px; }
+@media (max-width: 1050px) {
+  .funnel-row { flex-wrap: wrap; }
+  .funnel-item { flex: 1 1 160px; }
+}
+@media (max-width: 640px) {
+  .funnel-row { flex-direction: column; align-items: stretch; }
+  .funnel-item { flex-direction: column; }
+  .funnel-conn { flex-direction: row; min-width: 0; padding: .15rem 0; }
+}
+
 .attention { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .attention a { display: flex; align-items: center; gap: .75rem; padding: .7rem .75rem; border-radius: 12px; border: 1px solid var(--border); color: var(--text); background: var(--surface); }
 .attention a:hover { border-color: var(--border-strong); background: var(--surface-2); text-decoration: none; }

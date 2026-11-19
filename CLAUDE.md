@@ -3,7 +3,7 @@
 Next.js + MongoDB internal tool. The app is the database + API; **Claude Code does the hunting and the Instagram sending** (no Anthropic API key in the app).
 
 All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Base URL: `http://localhost:3000` locally, `APP_URL` when hosted
-(https://havstrategyautomation.vercel.app).
+(https://havstrategyautomation-ten.vercel.app).
 
 ## Endpoints
 - `GET /api/meta`: the database's real vocabulary (niches, IG categories, locations, tiers, statuses with counts, existing clients). **Read before translating a requirement.**

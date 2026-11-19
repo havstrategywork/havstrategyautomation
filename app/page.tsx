@@ -5,6 +5,7 @@ import { STATUSES } from "@/lib/fields";
 import { controlState } from "@/lib/control";
 import { currentUser } from "@/lib/session";
 import { Avatar, Badge, Icon, ago } from "@/components/ui";
+import Funnel, { type FunnelStage } from "@/components/Funnel";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,14 @@ async function resume() {
 export default async function Dashboard() {
   const user = await currentUser();
   const ctl = await controlState();
-  const { creators, outreach, briefs } = await db();
+  const { creators, clients, outreach, briefs } = await db();
   const since = new Date(Date.now() - 14 * 864e5);
-  const [needsYou, nCreators, igQueued, ig, byStatus, recent, perDay, awaiting, escalated] = await Promise.all([
+  const startToday = new Date(new Date().setHours(0, 0, 0, 0));
+  const offersFilter = { $or: [{ quotedRate: { $exists: true, $ne: "" } }, { status: { $in: ["Negotiating", "Agreed"] } }] };
+  const [
+    needsYou, nCreators, igQueued, ig, byStatus, recent, perDay, awaiting, escalated,
+    nBrands, brandsList, influencersList, followupsToday, followupsList, offersCount, offersList, dealsList,
+  ] = await Promise.all([
     creators.countDocuments({ needsHuman: { $exists: true } }), creators.countDocuments(),
     outreach.countDocuments({ channel: "ig", status: "queued" }), sentToday("ig"),
     creators.aggregate<{ _id: string; n: number }>([{ $group: { _id: { $ifNull: ["$status", "New"] }, n: { $sum: 1 } } }]).toArray(),
@@ -36,6 +42,15 @@ export default async function Dashboard() {
     ]).toArray(),
     briefs.find({ status: "awaiting_approval" }).project<{ _id: unknown; client: string }>({ client: 1 }).limit(5).toArray(),
     creators.find({ needsHuman: { $exists: true } }).project<{ _id: unknown; name: string; igHandle?: string; needsHuman: { reason: string } }>({ name: 1, igHandle: 1, needsHuman: 1 }).limit(4).toArray(),
+    // funnel: brands -> influencers -> follow-ups sent today -> offers -> deals agreed
+    clients.countDocuments(),
+    clients.find().sort({ name: 1 }).limit(20).project<{ _id: unknown; name: string; niches?: string[]; locations?: string[]; maxRate?: string }>({ name: 1, niches: 1, locations: 1, maxRate: 1 }).toArray(),
+    creators.find().sort({ createdAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; followers: number; status?: string }>({ name: 1, igHandle: 1, followers: 1, status: 1 }).toArray(),
+    outreach.countDocuments({ channel: "ig", kind: "followup", status: "sent", sentAt: { $gte: startToday } }),
+    outreach.find({ channel: "ig", kind: "followup", status: "sent", sentAt: { $gte: startToday } }).sort({ sentAt: -1 }).limit(20).toArray(),
+    creators.countDocuments(offersFilter),
+    creators.find(offersFilter).sort({ lastChecked: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; quotedRate?: string; status?: string }>({ name: 1, igHandle: 1, quotedRate: 1, status: 1 }).toArray(),
+    creators.find({ status: "Agreed" }).sort({ agreedAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; agreedRate?: string; agreedAt?: Date }>({ name: 1, igHandle: 1, agreedRate: 1, agreedAt: 1 }).toArray(),
   ]);
   const count = new Map(byStatus.map((s) => [s._id, s.n]));
   const c = (s: string) => count.get(s) ?? 0;
@@ -43,6 +58,32 @@ export default async function Dashboard() {
   const contacted = responded + c("DM Sent");
   const rate = contacted ? Math.round((responded / contacted) * 100) : 0;
   const people = new Map((await creators.find({ _id: { $in: recent.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
+  const followupPeople = new Map((await creators.find({ _id: { $in: followupsList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
+
+  const pct = (cur: number, prev: number) => (prev ? Math.round((cur / prev) * 100) : null);
+  const dealsAgreed = c("Agreed");
+  const funnelStages: FunnelStage[] = [
+    {
+      key: "brands", label: "Total brands", icon: "briefcase", count: nBrands, pct: null, emptyText: "No clients yet.",
+      items: brandsList.map((b) => ({ id: String(b._id), title: b.name, meta: [b.niches?.slice(0, 3).join(", "), b.locations?.slice(0, 2).join(", ")].filter(Boolean).join(" · ") || undefined, right: b.maxRate, href: "/creators" })),
+    },
+    {
+      key: "influencers", label: "Total influencers", icon: "users", count: nCreators, pct: pct(nCreators, nBrands), emptyText: "No creators yet.",
+      items: influencersList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle} · ${p.followers.toLocaleString("en-IN")} followers` : `${p.followers.toLocaleString("en-IN")} followers`, right: p.status ?? "New", href: `/creators/${p._id}` })),
+    },
+    {
+      key: "followups", label: "Follow-ups sent today", icon: "send", count: followupsToday, pct: pct(followupsToday, nCreators), emptyText: "None sent today yet.",
+      items: followupsList.map((o) => { const p = followupPeople.get(String(o.creatorId)); return { id: String(o._id), title: p?.name ?? "Unknown", meta: p?.igHandle ? `@${p.igHandle}` : undefined, right: ago(o.sentAt), href: p ? `/creators/${o.creatorId}` : undefined }; }),
+    },
+    {
+      key: "offers", label: "Offers", icon: "bolt", count: offersCount, pct: pct(offersCount, followupsToday), emptyText: "No offers in play.",
+      items: offersList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.quotedRate ?? p.status, href: `/creators/${p._id}` })),
+    },
+    {
+      key: "deals", label: "Deals agreed", icon: "handshake", count: dealsAgreed, pct: pct(dealsAgreed, offersCount), emptyText: "No deals agreed yet.",
+      items: dealsList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.agreedRate ?? ago(p.agreedAt), href: `/creators/${p._id}` })),
+    },
+  ];
 
   // last 14 days, oldest first, zero-filled
   const sent = new Map(perDay.map((d) => [d._id, d.n]));
@@ -85,6 +126,8 @@ export default async function Dashboard() {
         </div>
       )}
 
+      <Funnel stages={funnelStages} />
+
       <div className="grid stats">
         <div className="card stat">
           <div className="label"><span className="ico"><Icon name="send" /></span>DMs today</div>
@@ -98,9 +141,9 @@ export default async function Dashboard() {
           <div className="sub">{responded} of {contacted} contacted creators replied</div>
         </div>
         <div className="card stat">
-          <div className="label"><span className="ico good"><Icon name="handshake" /></span>Deals</div>
-          <div className="value">{c("Agreed")}<small> agreed</small></div>
-          <div className="sub">{c("Negotiating")} in negotiation</div>
+          <div className="label"><span className="ico warn"><Icon name="bolt" /></span>In negotiation</div>
+          <div className="value">{c("Negotiating")}</div>
+          <div className="sub">{c("Declined")} declined so far</div>
         </div>
         <Link href="/inbox" className="card stat">
           <div className="label"><span className={`ico ${needsYou ? "warn" : "info"}`}><Icon name="alert" /></span>Needs you</div>

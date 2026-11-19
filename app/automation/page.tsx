@@ -28,7 +28,7 @@ export default async function Automation() {
     outreach.countDocuments({ channel: "ig", status: "queued" }), sentToday("ig"),
   ]);
   const checks: [boolean, string, string][] = [
-    [!!url, "APP_URL is set", url || "Set APP_URL to the hosted address (e.g. https://havstrategyautomation.vercel.app) so prompts and notifications link to it."],
+    [!!url, "APP_URL is set", url || "Set APP_URL to the hosted address (e.g. https://havstrategyautomation-ten.vercel.app) so prompts and notifications link to it."],
     [key.length >= 16, "API_KEY is long enough", key.length >= 16 ? `${key.length} characters` : "Use a long random key (16+ characters); it is shared with Cowork."],
     [!!ownerName(), "OWNER is set", ownerName() || "Set OWNER (e.g. akshit) so you and your teammate never touch each other's creators."],
     [!process.env.IG_ALLOWLIST, "Live mode (no IG_ALLOWLIST)", process.env.IG_ALLOWLIST ? `Test mode: only ${process.env.IG_ALLOWLIST} gets messages.` : "Real creators get messages."],
