@@ -110,3 +110,57 @@ export async function sendGuidelines(clientId: ObjectId) {
   if (res.sent) await notify(`Guidelines emailed: ${cl.name}`, `${res.sent} sent${res.noEmail.length ? `, ${res.noEmail.length} have no email` : ""}.`);
   return res;
 }
+
+/** Days left until a client's contentDeadline (YYYY-MM-DD), or null if none is set. Negative = past due. */
+export function daysRemaining(contentDeadline?: string) {
+  if (!contentDeadline) return null;
+  const d = new Date(`${contentDeadline}T00:00:00`);
+  if (isNaN(+d)) return null;
+  return Math.ceil((+d - +new Date(new Date().toDateString())) / 864e5);
+}
+
+/** M2: nudges every creator who already got the guidelines email to send their script in. Once per creator, manual trigger (Campaigns page). */
+export async function sendScriptReminder(clientId: ObjectId) {
+  return sendStepEmail(clientId, "scriptReminderTemplate", "scriptReminderSentAt", "script-reminder", { dealClientId: clientId, guidelinesSentAt: { $exists: true }, scriptReminderSentAt: { $exists: false } });
+}
+
+/** M3: content-deadline reminder. Needs the client's contentDeadline set, so {{days}} has a real number. Once per creator, manual trigger. */
+export async function sendDeadline(clientId: ObjectId) {
+  const cl = await (await db()).clients.findOne({ _id: clientId });
+  const days = daysRemaining(cl?.contentDeadline);
+  if (days == null) throw new Error("set this campaign's content deadline first");
+  return sendStepEmail(clientId, "deadlineTemplate", "deadlineSentAt", "deadline", { dealClientId: clientId, guidelinesSentAt: { $exists: true }, deadlineSentAt: { $exists: false } }, { days: String(days) });
+}
+
+/** Shared sender for the M2/M3 one-off email steps: same claim-then-send, same allowlist/cap/retry rules as sendGuidelines. */
+async function sendStepEmail(clientId: ObjectId, templateField: "scriptReminderTemplate" | "deadlineTemplate", sentField: "scriptReminderSentAt" | "deadlineSentAt", kind: "script-reminder" | "deadline", match: Record<string, unknown>, extraVars: Record<string, string> = {}) {
+  const { clients, creators, outreach } = await db();
+  const cl = await clients.findOne({ _id: clientId });
+  const template = cl?.[templateField];
+  if (!template) throw new Error(`save the ${kind === "script-reminder" ? "script reminder" : "deadline"} email for this client first`);
+  render(template, { name: "x", handle: "x", rate: "x", ...extraVars }); // fail early on a bad placeholder
+  const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD are not set");
+  const mail = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+  const cap = Number(process.env.EMAIL_DAILY_CAP ?? 100);
+  const res = { sent: 0, noEmail: [] as string[], blocked: 0, failed: 0, capped: false };
+  for (const c of await creators.find(match).toArray()) {
+    if (!(await inScope(c))) continue;
+    if (!c.email) { res.noEmail.push(c.igHandle ? `@${c.igHandle}` : c.name); continue; }
+    if (!emailAllowed(c.email, process.env.EMAIL_ALLOWLIST)) { res.blocked++; continue; }
+    if ((await sentToday("email")) >= cap) { res.capped = true; break; }
+    if (!(await creators.findOneAndUpdate({ _id: c._id, [sentField]: { $exists: false } }, { $set: { [sentField]: new Date() } }))) continue; // someone else just sent it
+    const { subject, body } = splitSubject(render(template, { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "", ...extraVars }));
+    try {
+      await mail.sendMail({ from: user, to: c.email, subject, text: body });
+      await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind, subject, message: body, status: "sent", createdAt: new Date(), sentAt: new Date() });
+      res.sent++;
+    } catch (e) {
+      await creators.updateOne({ _id: c._id }, { $unset: { [sentField]: "" } }); // release the claim so it can be retried
+      await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind, subject, message: body, status: "failed", error: (e as Error).message.slice(0, 200), createdAt: new Date() });
+      res.failed++;
+    }
+  }
+  if (res.sent) await notify(`${kind === "script-reminder" ? "Script reminder" : "Deadline reminder"} emailed: ${cl!.name}`, `${res.sent} sent${res.noEmail.length ? `, ${res.noEmail.length} have no email` : ""}.`);
+  return res;
+}

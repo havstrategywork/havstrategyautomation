@@ -163,6 +163,9 @@ person sets their own `OWNER` in their own copy of the app.
 5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
    who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply).
    Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
+5c. **Script reminder (M2) and deadline (M3) emails**: two more one-off, per-creator email steps, each saved and sent by hand on the Campaigns page (`scriptReminderTemplate`/`scriptReminderSentAt`,
+   `deadlineTemplate`/`deadlineSentAt` on the client/creator) — not on a schedule, and Claude never writes or triggers them. The campaign-stage funnel on Campaigns (Creator → Outreach → Negotiate →
+   Client's approval → M1 → M2 → M3) is a read-only summary of these stages; the M3 button lists campaigns with a `contentDeadline` set and how many days are left.
 6. **Notifications** (`NOTIFY_URL`: ntfy topic, Discord or Slack webhook): pause, failed run/brief, shortlist ready, escalation, deal agreed.
 
 The three scheduled prompts live in `lib/prompts.ts` and are shown, with the real URL and key filled in, on the dashboard's **Automation** page

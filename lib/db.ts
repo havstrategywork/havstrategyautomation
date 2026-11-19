@@ -40,6 +40,8 @@ export type Creator = {
   clientNote?: string;
   decidedAt?: Date;
   guidelinesSentAt?: Date; // the guidelines email went out; later sheet changes are ignored
+  scriptReminderSentAt?: Date; // M2: script reminder email went out (once per creator)
+  deadlineSentAt?: Date; // M3: content-deadline reminder email went out (once per creator)
 };
 export type Client = {
   _id?: ObjectId;
@@ -52,6 +54,9 @@ export type Client = {
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
   sheetUrl?: string; // the client's own Google Sheet (from the brief): each review batch becomes a new "Content creators" tab in it
   guidelinesTemplate?: string; // email sent to creators the client said Yes to. First line "Subject: ..."; {{name}} {{handle}} {{rate}} are filled in
+  scriptReminderTemplate?: string; // M2: nudge to submit their script. Same placeholders as guidelinesTemplate
+  deadlineTemplate?: string; // M3: content-deadline reminder. Same placeholders, plus {{days}} (days left until contentDeadline)
+  contentDeadline?: string; // this campaign's content deadline, YYYY-MM-DD; drives the M3 "days remaining" display and the {{days}} placeholder
   followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
@@ -83,7 +88,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup" | "guidelines"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  kind?: "first" | "followup" | "guidelines" | "script-reminder" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;

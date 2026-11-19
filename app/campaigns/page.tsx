@@ -5,8 +5,13 @@ import { mine } from "@/lib/briefs";
 import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
-import { readyDeals } from "@/lib/deals";
-import { approveBrief, archiveBrief, createSheetAction, findMore, markSharedAction, saveGuidelinesAction, sendGuidelinesAction, uploadAnswersAction } from "./actions";
+import { daysRemaining, readyDeals } from "@/lib/deals";
+import Funnel, { type FunnelStage } from "@/components/Funnel";
+import {
+  approveBrief, archiveBrief, createSheetAction, findMore, markSharedAction,
+  saveDeadlineAction, saveGuidelinesAction, saveScriptReminderAction,
+  sendDeadlineAction, sendGuidelinesAction, sendScriptReminderAction, uploadAnswersAction,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +22,48 @@ const LABEL: Record<BriefDoc["status"], string> = {
 
 export default async function Campaigns({ searchParams }: { searchParams: Promise<{ err?: string; ok?: string; all?: string; page?: string }> }) {
   const { err, ok, all, page: pageParam } = await searchParams;
-  const { briefs, creators, clients, dealBatches } = await db();
+  const { briefs, creators, clients, dealBatches, outreach } = await db();
+
+  // The campaign-stage funnel: creator -> outreach -> negotiate -> client's approval -> guideline email (M1)
+  // -> script reminder (M2) -> deadline email (M3). Each button drills into the creators (or, for M3, campaigns) behind it.
+  const [
+    nCreatorsAll, creatorsFunnelList, outreachSentCount, outreachFunnelList,
+    negotiatingCount, negotiatingList, approvalCount, approvalList,
+    m1Count, m1List, m2Count, m2List, deadlineClients, deadlineSentByClient,
+  ] = await Promise.all([
+    creators.countDocuments(),
+    creators.find().sort({ createdAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; followers: number; status?: string }>({ name: 1, igHandle: 1, followers: 1, status: 1 }).toArray(),
+    outreach.countDocuments({ channel: "ig", status: "sent" }),
+    outreach.find({ channel: "ig", status: "sent" }).sort({ sentAt: -1 }).limit(20).toArray(),
+    creators.countDocuments({ status: "Negotiating" }),
+    creators.find({ status: "Negotiating" }).sort({ lastChecked: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; quotedRate?: string }>({ name: 1, igHandle: 1, quotedRate: 1 }).toArray(),
+    creators.countDocuments({ clientDecision: { $exists: true } }),
+    creators.find({ clientDecision: { $exists: true } }).sort({ decidedAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; clientDecision?: string; clientNote?: string }>({ name: 1, igHandle: 1, clientDecision: 1, clientNote: 1 }).toArray(),
+    creators.countDocuments({ guidelinesSentAt: { $exists: true } }),
+    creators.find({ guidelinesSentAt: { $exists: true } }).sort({ guidelinesSentAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; guidelinesSentAt?: Date }>({ name: 1, igHandle: 1, guidelinesSentAt: 1 }).toArray(),
+    creators.countDocuments({ scriptReminderSentAt: { $exists: true } }),
+    creators.find({ scriptReminderSentAt: { $exists: true } }).sort({ scriptReminderSentAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; scriptReminderSentAt?: Date }>({ name: 1, igHandle: 1, scriptReminderSentAt: 1 }).toArray(),
+    clients.find({ contentDeadline: { $exists: true, $ne: "" } }).project<{ _id: unknown; name: string; contentDeadline?: string }>({ name: 1, contentDeadline: 1 }).limit(20).toArray(),
+    creators.aggregate<{ _id: unknown; n: number }>([{ $match: { deadlineSentAt: { $exists: true } } }, { $group: { _id: "$dealClientId", n: { $sum: 1 } } }]).toArray(),
+  ]);
+  const outreachPeople = new Map((await creators.find({ _id: { $in: outreachFunnelList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
+  const deadlineSentMap = new Map(deadlineSentByClient.map((r) => [String(r._id), r.n]));
+
+  const campaignStages: FunnelStage[] = [
+    { key: "creator", label: "Creator", icon: "users", count: nCreatorsAll, emptyText: "No creators yet.", items: creatorsFunnelList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle} · ${p.followers.toLocaleString("en-IN")} followers` : undefined, right: p.status ?? "New", href: `/creators/${p._id}` })) },
+    { key: "outreach", label: "Outreach", icon: "send", count: outreachSentCount, emptyText: "No outreach sent yet.", items: outreachFunnelList.map((o) => { const p = outreachPeople.get(String(o.creatorId)); return { id: String(o._id), title: p?.name ?? "Unknown", meta: p?.igHandle ? `@${p.igHandle}` : undefined, right: ago(o.sentAt), href: p ? `/creators/${o.creatorId}` : undefined }; }) },
+    { key: "negotiate", label: "Negotiate", icon: "chat", count: negotiatingCount, emptyText: "Nobody's negotiating right now.", items: negotiatingList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.quotedRate, href: `/creators/${p._id}` })) },
+    { key: "approval", label: "Client's approval", icon: "check", count: approvalCount, emptyText: "No creators reviewed by a client yet.", items: approvalList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.clientDecision === "yes" ? "Yes" : "No", href: `/creators/${p._id}` })) },
+    { key: "m1", label: "Guideline email · M1", icon: "inbox", count: m1Count, emptyText: "No guideline emails sent yet.", items: m1List.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: ago(p.guidelinesSentAt), href: `/creators/${p._id}` })) },
+    { key: "m2", label: "Script reminder · M2", icon: "bolt", count: m2Count, emptyText: "No script reminders sent yet.", items: m2List.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: ago(p.scriptReminderSentAt), href: `/creators/${p._id}` })) },
+    {
+      key: "m3", label: "Deadline email · M3", icon: "alert", count: deadlineClients.length, emptyText: "No campaign has a content deadline set yet.",
+      items: deadlineClients.map((cl) => {
+        const days = daysRemaining(cl.contentDeadline);
+        return { id: String(cl._id), title: cl.name, meta: `${deadlineSentMap.get(String(cl._id)) ?? 0} reminder email${(deadlineSentMap.get(String(cl._id)) ?? 0) === 1 ? "" : "s"} sent`, right: days == null ? "—" : days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? "Due today" : `${days}d left`, href: "/campaigns" };
+      }),
+    },
+  ];
 
   // Client review: agreed deals waiting for a sheet, and the sheets already sent (last 60 days) with the client's answers.
   const waiting = await readyDeals();
@@ -55,11 +101,16 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
       {err && <div className="notice" role="alert" style={{ borderLeftColor: "var(--bad)" }}>{err}</div>}
       {ok && <div className="notice" role="status">{ok}</div>}
 
+      <Funnel stages={campaignStages} />
+
       {reviewClients.map((cid) => {
         const cl = reviewNames.get(cid);
         const mineBatches = batches.filter((b) => String(b.clientId) === cid);
         const rows = onSheet.filter((c) => String(c.dealClientId) === cid);
         const toSend = rows.filter((c) => c.clientDecision === "yes" && !c.guidelinesSentAt).length;
+        const toSendScript = rows.filter((c) => c.guidelinesSentAt && !c.scriptReminderSentAt).length;
+        const toSendDeadline = rows.filter((c) => c.guidelinesSentAt && !c.deadlineSentAt).length;
+        const days = daysRemaining(cl?.contentDeadline);
         const n = waiting.get(cid)?.length ?? 0;
         return (
           <section key={cid} className="card campaign">
@@ -84,7 +135,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
             {rows.length > 0 && (
               <div className="tablewrap" style={{ marginTop: "1rem" }}>
                 <table>
-                  <thead><tr><th>Creator</th><th className="num">Agreed rate</th><th>Client says</th><th>Note</th><th>Guidelines</th></tr></thead>
+                  <thead><tr><th>Creator</th><th className="num">Agreed rate</th><th>Client says</th><th>Note</th><th>M1 Guidelines</th><th>M2 Script</th><th>M3 Deadline</th></tr></thead>
                   <tbody>{rows.map((c) => (
                     <tr key={String(c._id)}>
                       <td><Link href={`/creators/${c._id}`}><b>{c.igHandle ? `@${c.igHandle}` : c.name}</b></Link></td>
@@ -92,6 +143,8 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                       <td>{c.clientDecision === "yes" ? "Yes" : c.clientDecision === "no" ? "No" : "Waiting"}</td>
                       <td className="small muted">{c.clientNote}</td>
                       <td className="small">{c.guidelinesSentAt ? `Sent ${ago(c.guidelinesSentAt)}` : c.clientDecision === "yes" ? (c.email ? "Ready" : "No email on file") : ""}</td>
+                      <td className="small">{c.scriptReminderSentAt ? `Sent ${ago(c.scriptReminderSentAt)}` : c.guidelinesSentAt ? "Ready" : ""}</td>
+                      <td className="small">{c.deadlineSentAt ? `Sent ${ago(c.deadlineSentAt)}` : c.guidelinesSentAt ? "Ready" : ""}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -105,6 +158,34 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
               <div className="row" style={{ justifyContent: "flex-end" }}>
                 <button formAction={saveGuidelinesAction} className="ghost">Save email</button>
                 {toSend > 0 && <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>}
+              </div>
+            </form>
+
+            <form className="form" style={{ marginTop: "1rem" }}>
+              <input type="hidden" name="id" value={cid} />
+              <label>Script reminder email · M2, sent once guidelines have gone out (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} are filled in)
+                <textarea name="scriptReminder" rows={5} defaultValue={cl?.scriptReminderTemplate ?? ""} placeholder={"Subject: Script check-in, [Brand] x @{{handle}}\n\nHi {{name}}, just checking in on your script..."} />
+              </label>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button formAction={saveScriptReminderAction} className="ghost">Save email</button>
+                {toSendScript > 0 && <button formAction={sendScriptReminderAction}>Send reminder to {toSendScript} creator{toSendScript === 1 ? "" : "s"}</button>}
+              </div>
+            </form>
+
+            <form className="form" style={{ marginTop: "1rem" }}>
+              <input type="hidden" name="id" value={cid} />
+              <div className="f2">
+                <label>Content deadline for this campaign
+                  <input type="date" name="contentDeadline" defaultValue={cl?.contentDeadline ?? ""} />
+                  <span className="small muted">{days == null ? "Not set." : days < 0 ? `${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} overdue.` : days === 0 ? "Due today." : `${days} day${days === 1 ? "" : "s"} remaining.`}</span>
+                </label>
+                <label>Deadline email · M3 (same placeholders, plus {"{{days}}"} = days remaining)
+                  <textarea name="deadline" rows={5} defaultValue={cl?.deadlineTemplate ?? ""} placeholder={"Subject: {{days}} days left to submit, @{{handle}}\n\nHi {{name}}, just a reminder..."} />
+                </label>
+              </div>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button formAction={saveDeadlineAction} className="ghost">Save</button>
+                {toSendDeadline > 0 && <button formAction={sendDeadlineAction} disabled={days == null}>Send deadline reminder to {toSendDeadline} creator{toSendDeadline === 1 ? "" : "s"}</button>}
               </div>
             </form>
           </section>

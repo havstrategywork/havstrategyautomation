@@ -9,7 +9,7 @@ import { mine, queueShortlist, submitBrief } from "@/lib/briefs";
 import type { BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
 import { render } from "@/lib/template";
-import { applyAnswers, createBatch, markShared, sendGuidelines } from "@/lib/deals";
+import { applyAnswers, createBatch, markShared, sendDeadline, sendGuidelines, sendScriptReminder } from "@/lib/deals";
 import { csvRows } from "@/lib/dealrules";
 import { xlsxRows } from "@/lib/xlsx";
 
@@ -109,6 +109,45 @@ export async function sendGuidelinesAction(fd: FormData) {
     const r = await sendGuidelines(idOf(fd));
     return `Guidelines emailed to ${r.sent}.${r.noEmail.length ? ` No email on file for ${r.noEmail.join(", ")}: reach them on Instagram.` : ""}${r.blocked ? ` ${r.blocked} held back by EMAIL_ALLOWLIST (test mode).` : ""}${r.failed ? ` ${r.failed} failed (see Outreach).` : ""}${r.capped ? " Stopped at the daily email cap." : ""}`;
   });
+}
+
+const sendResultMsg = (label: string, r: Awaited<ReturnType<typeof sendScriptReminder>>) =>
+  `${label} emailed to ${r.sent}.${r.noEmail.length ? ` No email on file for ${r.noEmail.join(", ")}: reach them on Instagram.` : ""}${r.blocked ? ` ${r.blocked} held back by EMAIL_ALLOWLIST (test mode).` : ""}${r.failed ? ` ${r.failed} failed (see Outreach).` : ""}${r.capped ? " Stopped at the daily email cap." : ""}`;
+
+export async function saveScriptReminderAction(fd: FormData) {
+  await requireUser();
+  await back(async () => {
+    const cl = await (await db()).clients.findOne({ _id: idOf(fd) });
+    if (!cl) throw new Error("client not found");
+    const t = String(fd.get("scriptReminder") ?? "").trim();
+    try { render(t || "x", { name: "Sam", handle: "sam", rate: "10k INR" }); } catch (e) { throw new Error(`${(e as Error).message}. Only {{name}}, {{handle}} and {{rate}} can be filled in.`); }
+    await upsertClient({ name: cl.name, scriptReminderTemplate: t });
+    return "Script reminder email saved.";
+  });
+}
+
+export async function sendScriptReminderAction(fd: FormData) {
+  await requireUser();
+  await back(async () => sendResultMsg("Script reminder", await sendScriptReminder(idOf(fd))));
+}
+
+export async function saveDeadlineAction(fd: FormData) {
+  await requireUser();
+  await back(async () => {
+    const cl = await (await db()).clients.findOne({ _id: idOf(fd) });
+    if (!cl) throw new Error("client not found");
+    const deadline = String(fd.get("contentDeadline") ?? "").trim();
+    if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) throw new Error("content deadline must be a date");
+    const t = String(fd.get("deadline") ?? "").trim();
+    try { render(t || "x", { name: "Sam", handle: "sam", rate: "10k INR", days: "5" }); } catch (e) { throw new Error(`${(e as Error).message}. Only {{name}}, {{handle}}, {{rate}} and {{days}} can be filled in.`); }
+    await upsertClient({ name: cl.name, deadlineTemplate: t, ...(deadline && { contentDeadline: deadline }) });
+    return "Deadline email saved.";
+  });
+}
+
+export async function sendDeadlineAction(fd: FormData) {
+  await requireUser();
+  await back(async () => sendResultMsg("Deadline reminder", await sendDeadline(idOf(fd))));
 }
 
 /** Back to Cowork for more candidates (it skips everyone already on the shortlist). */
