@@ -139,15 +139,17 @@ API key: ${key || "<API_KEY: set it in the app's environment>"}
 Call the endpoint with the headers  Authorization: Bearer <API key>  and  Content-Type: application/json.
 If you have no HTTP tool: open ONE Chrome tab at the app URL and run fetch() from that tab with a relative path.
 
-The job: email the collaboration guidelines and terms to creators the client approved. The SERVER does all of it: it picks creators the client said Yes to
-(a human uploads the client's returned sheet on the Campaigns page; you never touch sheets) who haven't been emailed yet, fills in each creator's name, handle and agreed rate in the email
-a human saved on the Campaigns page, sends it and records it. You only trigger it and report. Nothing is "pending since last hour": it always
-looks at everything not yet emailed, so a missed run catches up by itself.
+The job: push agreed deals into clients' own sheets, then email the collaboration guidelines and terms to creators the client approved.
+The SERVER does all of it: it adds a tab for every client that already has a saved sheet link (from the brief) and has agreed deals waiting
+(a client with no sheet link just keeps waiting for a human to click "Create sheet" on Campaigns); separately it picks creators the client said
+Yes to (a human uploads the client's returned sheet there; you never touch sheets) who haven't been emailed yet, fills in each creator's name,
+handle and agreed rate in the email a human saved on the Campaigns page, sends it and records it. You only trigger it and report. Nothing is
+"pending since last hour": it always looks at everything not yet batched/emailed, so a missed run catches up by itself.
 
 1. POST /api/deals/run with the body {}. Call it ONCE per run. Never retry it.
-2. The reply is {"send":[{"clientId","sent","noEmail":[...],"blocked","failed","capped"} | {"clientId","error"}]}.
-   An empty "send" list means nothing was waiting: that is normal.
-3. Report in 1-3 lines: emails sent, and anything in noEmail / blocked / failed / capped / error (copy error text as is).
+2. The reply is {"batches":[{"clientId","count"} | {"clientId","error"}], "send":[{"clientId","sent","noEmail":[...],"blocked","failed","capped"} | {"clientId","error"}]}.
+   An empty "batches" or "send" list means nothing was waiting: that is normal.
+3. Report in 1-3 lines: sheets pushed, emails sent, and anything in error / noEmail / blocked / failed / capped (copy error text as is).
 
 Rules: never write, edit, shorten or send an email yourself; the guidelines and terms are only what the human saved in the dashboard. Never invent
 creators, emails, rates or terms. If the call fails (non-200), report the status and error text and stop. Don't trigger browser alert/confirm dialogs.`;

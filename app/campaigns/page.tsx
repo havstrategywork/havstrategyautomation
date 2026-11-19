@@ -5,9 +5,12 @@ import { mine } from "@/lib/briefs";
 import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
+import BriefChat from "@/components/BriefChat";
 import { readyDeals } from "@/lib/deals";
-import { approveBrief, archiveBrief, createSheetAction, findMore, markSharedAction, saveFollowEmailsAction, saveGuidelinesAction, sendDeadlineAction, sendGuidelinesAction, sendScriptReminderAction, uploadAnswersAction } from "./actions";
+import { approveBrief, archiveBrief, createSheetAction, deleteBrief, findMore, markSharedAction, saveFollowEmailsAction, saveGuidelinesAction, sendDeadlineAction, sendGuidelinesAction, sendScriptReminderAction, uploadAnswersAction } from "./actions";
 import { daysLabel, daysLeft } from "@/lib/dealrules";
+import { DeleteCampaignButton } from "./DeleteCampaignButton";
+import { GuidelinesUpload } from "./GuidelinesUpload";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +81,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
             {mineBatches.map((b) => (
               <div key={String(b._id)} className="row spread" style={{ margin: ".75rem 0 0", alignItems: "flex-start" }}>
                 <p className="small" style={{ margin: 0 }}>
-                  <b>{b.answeredAt ? "Answers uploaded" : b.sharedAt ? "With the client" : "Review it, then give it to the client"}</b> · sheet from {ago(b.createdAt)} · {b.creatorIds.length} creators · <a href={b.url} target="_blank" rel="noreferrer noopener">open sheet{b.tab ? ` (tab: ${b.tab})` : ""}</a>
+                  <b>{b.answeredAt ? "Answers uploaded" : b.sharedAt ? "With the client" : "Review it, then give it to the client"}</b> · sheet from {ago(b.createdAt)} · {b.creatorIds.length} creators · <a href={b.url} target="_blank" rel="noreferrer noopener">open sheet{b.tab ? ` (tab: ${b.tab})` : ""}</a> · <a href={`/campaigns/sheet/${b._id}`}>Download .xlsx</a>
                   {b.sharedAt && <> · given {ago(b.sharedAt)}</>}{b.answeredAt && <> · answers {ago(b.answeredAt)}</>}
                 </p>
                 <form className="row" action={uploadAnswersAction} encType="multipart/form-data">
@@ -107,16 +110,12 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                 </table>
               </div>
             )}
-            <form className="form" style={{ marginTop: "1rem" }}>
-              <input type="hidden" name="id" value={cid} />
-              <label>Guidelines email for creators the client approves (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} are filled in)
-                <textarea name="guidelines" rows={8} defaultValue={cl?.guidelinesTemplate ?? ""} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
-              </label>
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button formAction={saveGuidelinesAction} className="ghost">Save email</button>
-                {toSend > 0 && <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>}
-              </div>
-            </form>
+            {toSend > 0 && (
+              <form className="row" style={{ marginTop: "1rem", justifyContent: "flex-end" }}>
+                <input type="hidden" name="id" value={cid} />
+                <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>
+              </form>
+            )}
 
             <form className="form follow-emails" style={{ marginTop: "1rem" }}>
               <input type="hidden" name="id" value={cid} />
@@ -159,7 +158,12 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
           <section key={String(b._id)} className="card campaign">
             <div className="row spread">
               <div><h2 style={{ margin: 0 }}>{b.client}</h2><div className="small muted">{b.products.map((p) => p.name).join(" · ")} · started {ago(b.createdAt)}{b.runs ? ` · ${b.runs} Cowork run${b.runs === 1 ? "" : "s"}` : ""}</div></div>
-              <Badge s={b.status}>{LABEL[b.status]}</Badge>
+              <div className="row" style={{ gap: ".5rem" }}>
+                {b.status !== "archived" && (
+                  <BriefChat edit={{ id: String(b._id), data: { step: 0, client: b.client, products: b.products.length ? b.products : [{ name: "", about: "" }], rows: b.rows.length ? b.rows : [{ tier: "Micro", count: 2, budget: 10000 }], currency: b.currency, other: b.other, message: b.message, followUp: b.followUp, sheetUrl: b.sheetUrl ?? "" } }} />
+                )}
+                <Badge s={b.status}>{LABEL[b.status]}</Badge>
+              </div>
             </div>
             {b.note && <p className="small" style={{ margin: ".75rem 0 0" }}>{b.note}</p>}
 
@@ -218,6 +222,26 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                 <input type="hidden" name="id" value={String(b._id)} />
                 {(b.status === "approved" || b.status === "failed") && <button formAction={findMore} className="ghost">Find more creators</button>}
                 <button formAction={archiveBrief} className="ghost">Archive</button>
+              </form>
+            )}
+            {b.status === "archived" && <DeleteCampaignButton action={deleteBrief} id={String(b._id)} />}
+            {cl && (
+              <form className="form" style={{ marginTop: "1rem" }}>
+                <input type="hidden" name="id" value={String(cl._id)} />
+                <label>Email to creators the client approves (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} {"{{brand}}"} are filled in)
+                  <textarea name="guidelines" rows={8} defaultValue={cl.guidelinesTemplate ?? ""} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
+                </label>
+                <label>Terms doc (Google Doc with {"{{name}}"}/{"{{brand}}"} placeholders; merged and attached as a personalized PDF per creator)
+                  <input type="url" name="termsDocUrl" placeholder="https://docs.google.com/document/d/…" defaultValue={cl.termsDocId ? `https://docs.google.com/document/d/${cl.termsDocId}/edit` : ""} />
+                </label>
+                <div className="row spread" style={{ alignItems: "center" }}>
+                  <div>
+                    <div className="small muted">Brand guidelines/deck (PDF or PPTX, attached as-is to every creator)</div>
+                    {cl.guidelinesFileName && <div className="small">Current: {cl.guidelinesFileName}</div>}
+                    <GuidelinesUpload clientId={String(cl._id)} />
+                  </div>
+                  <button formAction={saveGuidelinesAction} className="ghost">Save guidelines</button>
+                </div>
               </form>
             )}
           </section>

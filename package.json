@@ -9,13 +9,15 @@
     "test": "node --experimental-strip-types lib/automation.test.ts && node --experimental-strip-types lib/brief.test.ts && node --experimental-strip-types lib/money.test.ts && node --experimental-strip-types lib/score.test.ts && node --experimental-strip-types lib/csv.test.ts && node --experimental-strip-types lib/template.test.ts && node --experimental-strip-types lib/pagination.test.ts && node --experimental-strip-types lib/dealrules.test.ts"
   },
   "dependencies": {
+    "@uploadthing/react": "^7.3.3",
     "csv-parse": "^7.0.3",
     "mongodb": "^7.9.0",
     "next": "^16.4.6",
     "nodemailer": "^10.6.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "read-excel-file": "^9.3.17"
+    "read-excel-file": "^9.3.17",
+    "uploadthing": "^7.7.4"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

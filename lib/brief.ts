@@ -77,6 +77,9 @@ export type BriefInput = Brief & { followUp: string; sheetUrl?: string };
 /** Google Sheets link -> spreadsheet id, or null. Pure. */
 export const sheetIdFromUrl = (u: string) => u.trim().match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([\w-]{20,})/)?.[1] ?? null;
 
+/** Google Docs link -> document id, or null. Pure. */
+export const docIdFromUrl = (u: string) => u.trim().match(/^https:\/\/docs\.google\.com\/document\/d\/([\w-]{20,})/)?.[1] ?? null;
+
 /** Pure: the client fields a brief fixes exactly. */
 export function clientFieldsFromBrief(b: BriefInput) {
   const rows = cleanRows(b.rows);

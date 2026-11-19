@@ -1,5 +1,8 @@
-// Minimal Google Sheets/Drive client: service account JWT over plain REST (no googleapis dependency).
-// Env: GOOGLE_SA_JSON = the service account's JSON key (one line). Enable the Sheets API and Drive API for its project.
+// Minimal Google Sheets/Drive/Docs client: service account JWT over plain REST (no googleapis dependency).
+// Env: GOOGLE_SA_JSON = the service account's JSON key (one line). Enable the Sheets API, Drive API and Docs API for its project.
+// The master Terms doc (see mergeDocToPdf) should live in a folder a REAL Google account owns, shared with the service account as Editor:
+// bare service accounts have ~0 Drive storage quota of their own, and files.copy inherits the source file's parent by default, so this just
+// works as long as the template doc wasn't created by the service account itself.
 import { createSign } from "node:crypto";
 
 const b64 = (o: unknown) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64url");
@@ -9,7 +12,8 @@ async function token() {
   if (!raw) throw new Error("GOOGLE_SA_JSON is not set (service account key); see .env.example");
   const sa = JSON.parse(raw) as { client_email: string; private_key: string };
   const now = Math.floor(Date.now() / 1000);
-  const head = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({ iss: sa.client_email, scope: "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive", aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })}`;
+  const scope = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents";
+  const head = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({ iss: sa.client_email, scope, aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })}`;
   const jwt = `${head}.${createSign("RSA-SHA256").update(head).sign(sa.private_key, "base64url")}`;
   const r = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }) });
   const j = await r.json();
@@ -22,6 +26,33 @@ async function call(auth: string, url: string, method: string, body?: unknown) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`Google API ${r.status}: ${j.error?.message ?? "request failed"}`);
   return j;
+}
+
+/** Binary Drive export (Sheets -> xlsx, Docs -> pdf): files.export only works for Google-native files, and the result isn't JSON. */
+async function exportFile(auth: string, id: string, mimeType: string) {
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/export?mimeType=${encodeURIComponent(mimeType)}`, { headers: { Authorization: auth }, signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`Google API ${r.status}: couldn't export the file`);
+  return Buffer.from(await r.arrayBuffer());
+}
+
+/** The review sheet, as a real .xlsx file (all tabs) for the "Download" link on Campaigns. */
+export async function exportXlsx(spreadsheetId: string) {
+  const { bearer } = await token();
+  return exportFile(bearer, spreadsheetId, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+
+/** Copies the master Terms doc, fills in {{key}} placeholders, exports it to PDF, then deletes the copy. One call per creator. */
+export async function mergeDocToPdf(templateDocId: string, vars: Record<string, string>) {
+  const { bearer } = await token();
+  const copy = await call(bearer, `https://www.googleapis.com/drive/v3/files/${templateDocId}/copy`, "POST", {});
+  const copyId = copy.id as string;
+  try {
+    const requests = Object.entries(vars).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } }));
+    if (requests.length) await call(bearer, `https://docs.googleapis.com/v1/documents/${copyId}:batchUpdate`, "POST", { requests });
+    return await exportFile(bearer, copyId, "application/pdf");
+  } finally {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${copyId}`, { method: "DELETE", headers: { Authorization: bearer }, signal: AbortSignal.timeout(20000) }).catch(() => {});
+  }
 }
 
 export const HEADER = ["id", "Handle", "Profile", "Followers", "Tier", "Eng. %", "Location", "Agreed rate", "About", "Decision (Yes/No)", "Note"];

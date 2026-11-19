@@ -57,6 +57,9 @@ export type Client = {
   scriptReminderTemplate?: string; // sent after guidelines: reminds the creator to send their script. Same format; also {{deadline}} {{days}}
   deadlineTemplate?: string; // sent after guidelines: content deadline reminder. Same format; also {{deadline}} {{days}}
   contentDeadline?: string; // "YYYY-MM-DD": the date the creators' content is due; the dashboard shows the days remaining
+  guidelinesFileUrl?: string; // static brand guidelines/deck (PDF or PPTX), same for every creator; attached as-is to the guidelines email
+  guidelinesFileName?: string;
+  termsDocId?: string; // master Terms Google Doc id ({{name}}/{{brand}} placeholders); merged + exported to a personalized PDF per creator
   followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
@@ -88,7 +91,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup" | "guidelines" | "script" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  kind?: "first" | "followup" | "guidelines" | "terms" | "script" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator. "terms" = the per-creator Doc merge failed (see sendGuidelines)
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;
