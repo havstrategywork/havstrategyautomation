@@ -11,7 +11,7 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-display", display: "swap" });
 
-export const metadata = { title: "Havstrategy · Outreach" };
+export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/havstrategy-logo.svg", shortcut: "/havstrategy-logo.svg" } };
 
 const NAV: { group: string; items: [string, string, IconName][] }[] = [
   { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
