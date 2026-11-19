@@ -97,16 +97,12 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                 </table>
               </div>
             )}
-            <form className="form" style={{ marginTop: "1rem" }}>
-              <input type="hidden" name="id" value={cid} />
-              <label>Guidelines email for creators the client approves (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} are filled in)
-                <textarea name="guidelines" rows={8} defaultValue={cl?.guidelinesTemplate ?? ""} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
-              </label>
-              <div className="row" style={{ justifyContent: "flex-end" }}>
-                <button formAction={saveGuidelinesAction} className="ghost">Save email</button>
-                {toSend > 0 && <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>}
-              </div>
-            </form>
+            {toSend > 0 && (
+              <form className="row" style={{ marginTop: "1rem", justifyContent: "flex-end" }}>
+                <input type="hidden" name="id" value={cid} />
+                <button formAction={sendGuidelinesAction}>Send guidelines to {toSend} approved creator{toSend === 1 ? "" : "s"}</button>
+              </form>
+            )}
           </section>
         );
       })}
@@ -180,6 +176,17 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                 <input type="hidden" name="id" value={String(b._id)} />
                 {(b.status === "approved" || b.status === "failed") && <button formAction={findMore} className="ghost">Find more creators</button>}
                 <button formAction={archiveBrief} className="ghost">Archive</button>
+              </form>
+            )}
+            {cl && (
+              <form className="form" style={{ marginTop: "1rem" }}>
+                <input type="hidden" name="id" value={String(cl._id)} />
+                <label>Brand guidelines &amp; terms, emailed to creators once this client approves them (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} are filled in)
+                  <textarea name="guidelines" rows={8} defaultValue={cl.guidelinesTemplate ?? ""} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
+                </label>
+                <div className="row" style={{ justifyContent: "flex-end" }}>
+                  <button formAction={saveGuidelinesAction} className="ghost">Save guidelines</button>
+                </div>
               </form>
             )}
           </section>

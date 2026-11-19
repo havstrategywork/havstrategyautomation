@@ -40,6 +40,20 @@ export async function createBatch(clientId: ObjectId) {
   return { url: sheet.url, count: ready.length };
 }
 
+/** Scheduled: pushes Agreed deals straight into the client's OWN sheet from the brief. Never creates a fresh sheet unattended —
+ *  a client with no sheetUrl just keeps waiting here until a human uses the manual "Create sheet" button on Campaigns. */
+export async function autoCreateBatches() {
+  const { clients } = await db();
+  const out: { clientId: string; count?: number; error?: string }[] = [];
+  for (const cid of (await readyDeals()).keys()) {
+    const cl = await clients.findOne({ _id: new ObjectId(cid) });
+    if (!cl?.sheetUrl) continue;
+    try { out.push({ clientId: cid, ...(await createBatch(new ObjectId(cid))) }); }
+    catch (e) { out.push({ clientId: cid, error: (e as Error).message }); }
+  }
+  return out;
+}
+
 /** A human has reviewed the sheet and handed it to the client. Only bookkeeping: the dashboard shows "with the client since ...". */
 export async function markShared(batchId: ObjectId) {
   const r = await (await db()).dealBatches.updateOne({ _id: batchId, sharedAt: { $exists: false } }, { $set: { sharedAt: new Date() } });

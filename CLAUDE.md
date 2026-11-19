@@ -155,12 +155,16 @@ person sets their own `OWNER` in their own copy of the app.
 4. **outreach run** (Cowork, hourly; kind `outreach`, merges the old send+replies runs into one Instagram session): first logs replies, answers and
    negotiates within `tierRates`, escalates; THEN delivers first DMs and due follow-ups (15 per run, 75/day). Replies run first so a follow-up never
    fires on a creator who just replied.
-5a. **Client review** (all manual, from the Campaigns page): the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
-   native Google Sheet shared with the service account as Editor). A human clicks "Create sheet": a NEW "Content creators" tab is added to that sheet (no link = a fresh sheet is made).
-   Nothing is posted anywhere. The human reviews it, gives it to the client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv`
-   ("Upload client's answers"; for an `.xlsx` the first tab with a Decision column is read, rows match by id or Instagram handle). That is the only way Yes/No enters the app: the app never reads the
-   Google Sheet and never posts to Slack.
-5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
+5a. **Client review**: the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
+   native Google Sheet shared with the service account as Editor). When the client has that link, agreed deals are pushed into it automatically (5b): a NEW
+   "Content creators" tab is added each time there are fresh ones. A client with no link just waits here until a human clicks "Create sheet" on Campaigns
+   (manual only in that case — it makes a fresh sheet). Either way, nothing is posted anywhere automatically: a human reviews the sheet, gives it to the
+   client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv` ("Upload client's answers";
+   for an `.xlsx` the first tab with a Decision column is read, rows match by id or Instagram handle). That is the only way Yes/No enters the app: the app
+   never reads the Google Sheet and never posts to Slack. The guidelines/terms email itself (`guidelinesTemplate`) is written and saved on the Campaigns
+   page per campaign, any time — not only once a deal is agreed.
+5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` first pushes agreed deals into every client's own sheet that already has a `sheetUrl`
+   (skips clients with none), then emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
    who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply).
    Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
 6. **Notifications** (`NOTIFY_URL`: ntfy topic, Discord or Slack webhook): pause, failed run/brief, shortlist ready, escalation, deal agreed.
