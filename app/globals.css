@@ -68,8 +68,8 @@ code, .mono { font-family: var(--font-code); font-size: .92em; }
 }
 .brand { display: flex; align-items: center; gap: .7rem; padding: .1rem .45rem; }
 .brand .logo {
-  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: #fff; background: var(--grad);
-  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 1px 0 rgb(255 255 255 / .25);
+  width: 34px; height: 34px; border-radius: 4px; display: grid; place-items: center; color: inherit; background: transparent;
+  box-shadow: none;
 }
 .brand b { display: block; line-height: 1.15; letter-spacing: -.01em; font-weight: 650; }
 .brand span { font-size: 12px; color: var(--muted); }
