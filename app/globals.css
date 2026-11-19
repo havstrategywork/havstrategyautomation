@@ -391,6 +391,13 @@ details > div { margin-top: .4rem; white-space: pre-wrap; color: var(--text); ma
 .funnel-conn { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; color: var(--muted); min-width: 28px; }
 .funnel-conn svg { opacity: .5; }
 .funnel-panel { margin-top: 1rem; }
+/* stat cards that double as drill-down buttons (QuickStats.tsx) */
+button.stat-btn {
+  width: 100%; text-align: left; background: var(--surface); background-image: none; color: var(--text);
+  border: 1px solid var(--border); font: inherit; cursor: pointer; box-shadow: var(--shadow);
+}
+button.stat-btn:hover { filter: none; border-color: var(--border-strong); box-shadow: var(--shadow-lift); transform: translateY(-2px); }
+button.stat-btn.active { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), var(--shadow-lift); }
 .funnel-list li .t { font-size: 12.5px; }
 @media (max-width: 1050px) {
   .funnel-row { flex-wrap: wrap; }

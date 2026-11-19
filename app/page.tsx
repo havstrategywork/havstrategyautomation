@@ -6,6 +6,7 @@ import { controlState } from "@/lib/control";
 import { currentUser } from "@/lib/session";
 import { Avatar, Badge, Icon, ago } from "@/components/ui";
 import Funnel, { type FunnelStage } from "@/components/Funnel";
+import QuickStats, { type QuickStat } from "@/components/QuickStats";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export default async function Dashboard() {
     needsYou, nCreators, igQueued, ig, byStatus, recent, perDay, awaiting, escalated,
     nBrands, brandsList, influencersList, followupsToday, followupsList, offersCount, offersList, dealsList,
     guidelinesCount, guidelinesList,
+    dmsTodayList, repliedList, needsYouList,
   ] = await Promise.all([
     creators.countDocuments({ needsHuman: { $exists: true } }), creators.countDocuments(),
     outreach.countDocuments({ channel: "ig", status: "queued" }), sentToday("ig"),
@@ -54,6 +56,10 @@ export default async function Dashboard() {
     creators.find({ status: "Agreed" }).sort({ agreedAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; agreedRate?: string; agreedAt?: Date }>({ name: 1, igHandle: 1, agreedRate: 1, agreedAt: 1 }).toArray(),
     creators.countDocuments({ guidelinesSentAt: { $exists: true } }),
     creators.find({ guidelinesSentAt: { $exists: true } }).sort({ guidelinesSentAt: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; guidelinesSentAt?: Date }>({ name: 1, igHandle: 1, guidelinesSentAt: 1 }).toArray(),
+    // quick-stat buttons: DMs today / reply rate / needs you
+    outreach.find({ channel: "ig", status: "sent", sentAt: { $gte: startToday } }).sort({ sentAt: -1 }).limit(20).toArray(),
+    creators.find({ status: { $in: ["Replied", "Negotiating", "Agreed", "Declined"] } }).sort({ lastChecked: -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; status?: string; response?: string }>({ name: 1, igHandle: 1, status: 1, response: 1 }).toArray(),
+    creators.find({ needsHuman: { $exists: true } }).sort({ "needsHuman.at": -1 }).limit(20).project<{ _id: unknown; name: string; igHandle?: string; needsHuman: { reason: string; at: Date } }>({ name: 1, igHandle: 1, needsHuman: 1 }).toArray(),
   ]);
   const count = new Map(byStatus.map((s) => [s._id, s.n]));
   const c = (s: string) => count.get(s) ?? 0;
@@ -62,6 +68,7 @@ export default async function Dashboard() {
   const rate = contacted ? Math.round((responded / contacted) * 100) : 0;
   const people = new Map((await creators.find({ _id: { $in: recent.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
   const followupPeople = new Map((await creators.find({ _id: { $in: followupsList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
+  const dmsTodayPeople = new Map((await creators.find({ _id: { $in: dmsTodayList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
 
   const dealsAgreed = c("Agreed");
   const funnelStages: FunnelStage[] = [
@@ -88,6 +95,24 @@ export default async function Dashboard() {
     {
       key: "guidelines", label: "Guideline emails", icon: "inbox", count: guidelinesCount, emptyText: "No guideline emails sent yet.",
       items: guidelinesList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: ago(p.guidelinesSentAt), href: `/creators/${p._id}` })),
+    },
+  ];
+
+  const quickStats: QuickStat[] = [
+    {
+      key: "dms-today", label: "DMs today", icon: "send", value: <>{ig}<small> / {IG_CAP}</small></>, barPct: (ig / IG_CAP) * 100,
+      sub: `${Math.max(0, IG_CAP - ig)} left today · ${igQueued} queued`, count: ig, emptyText: "No DMs sent today yet.",
+      items: dmsTodayList.map((o) => { const p = dmsTodayPeople.get(String(o.creatorId)); return { id: String(o._id), title: p?.name ?? "Unknown", meta: p?.igHandle ? `@${p.igHandle}` : undefined, right: `${o.kind === "followup" ? "Follow-up" : "First DM"} · ${ago(o.sentAt)}`, href: p ? `/creators/${o.creatorId}` : undefined }; }),
+    },
+    {
+      key: "reply-rate", label: "Reply rate", icon: "chat", iconClass: "violet", value: <>{rate}<small>%</small></>,
+      sub: `${responded} of ${contacted} contacted creators replied`, count: responded, emptyText: "No replies yet.",
+      items: repliedList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.status, href: `/creators/${p._id}` })),
+    },
+    {
+      key: "needs-you", label: "Needs you", icon: "alert", iconClass: needsYou ? "warn" : "info", value: needsYou, warn: !!needsYou,
+      sub: "conversations escalated by Claude", count: needsYou, emptyText: "Nothing needs you right now.",
+      items: needsYouList.map((p) => ({ id: String(p._id), title: p.name, meta: p.igHandle ? `@${p.igHandle}` : undefined, right: p.needsHuman.reason.slice(0, 50), href: `/creators/${p._id}` })),
     },
   ];
 
@@ -134,29 +159,7 @@ export default async function Dashboard() {
 
       <Funnel stages={funnelStages} />
 
-      <div className="grid stats">
-        <div className="card stat">
-          <div className="label"><span className="ico"><Icon name="send" /></span>DMs today</div>
-          <div className="value">{ig}<small> / {IG_CAP}</small></div>
-          <div className="bar" role="progressbar" aria-valuenow={ig} aria-valuemax={IG_CAP} aria-label="Daily DM cap used"><i style={{ width: `${Math.min(100, (ig / IG_CAP) * 100)}%` }} /></div>
-          <div className="sub" style={{ marginTop: ".55rem" }}>{Math.max(0, IG_CAP - ig)} left today · {igQueued} queued</div>
-        </div>
-        <div className="card stat">
-          <div className="label"><span className="ico violet"><Icon name="chat" /></span>Reply rate</div>
-          <div className="value">{rate}<small>%</small></div>
-          <div className="sub">{responded} of {contacted} contacted creators replied</div>
-        </div>
-        <div className="card stat">
-          <div className="label"><span className="ico warn"><Icon name="bolt" /></span>In negotiation</div>
-          <div className="value">{c("Negotiating")}</div>
-          <div className="sub">{c("Declined")} declined so far</div>
-        </div>
-        <Link href="/inbox" className="card stat">
-          <div className="label"><span className={`ico ${needsYou ? "warn" : "info"}`}><Icon name="alert" /></span>Needs you</div>
-          <div className="value" style={needsYou ? { color: "var(--warn)" } : undefined}>{needsYou}</div>
-          <div className="sub">conversations escalated by Claude</div>
-        </Link>
-      </div>
+      <QuickStats stats={quickStats} />
 
       <div className="dash">
         <div className="card">
