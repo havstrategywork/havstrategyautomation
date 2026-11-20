@@ -115,7 +115,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
           </section>
         );
       })}
-      {!list.length && <div className="card empty">No campaigns yet. Click <b>✦ New brief</b> (bottom right) to start one.</div>}
+      {!list.length && <div className="card empty">No campaigns yet to see here. Click <b>✦ New brief</b> (bottom right) to start one.</div>}
 
       {list.map((b) => {
         const cl = b.clientId ? cls.get(String(b.clientId)) : undefined;
@@ -148,7 +148,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
             {b.status === "awaiting_approval" && (
               <form action={approveBrief} className="form" style={{ marginTop: "1.25rem" }}>
                 <input type="hidden" name="id" value={String(b._id)} />
-                <h3 style={{ margin: 0 }}>Shortlist: untick anyone you don&apos;t want contacted</h3>
+                <h3 style={{ margin: 0 }}>Shortlist: untick anyone you don&apos;t want the outreach to be sent.</h3>
                 <div className="tablewrap">
                   <table>
                     <thead><tr><th style={{ width: 40 }} /><th>Creator</th><th className="num">Followers</th><th>Type</th><th className="num">Fit</th><th>Why</th></tr></thead>
