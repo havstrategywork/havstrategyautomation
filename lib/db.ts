@@ -11,7 +11,7 @@ export type Creator = {
   platforms?: string[];
   collab: { count: number; rating: number; notes: string }; // rating 0-5
   notes: string; // "Notes (from bio)"
-  source: string; // how the row got in: "manual" | "claude-hunt" | "csv" | ...
+  source: string; // how the row got in: "manual" | "claude-hunt" | "creator-marketing-hub" | "csv" | ...
   createdAt: Date;
   // sheet columns. Tier and Times Suggested are derived (see lib/fields.ts), never stored.
   igCategory?: string;

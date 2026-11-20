@@ -46,10 +46,13 @@ The job: turn ONE new campaign brief into a shortlist. You never queue or send D
 5. Candidates. For each row the target is 3 x count (not everyone replies). POST /api/search {"clientId": "<clientId>", "want": 100}.
    From "results" keep creators that: have an igHandle, alreadyContacted is false, status is not "Declined", are not in the brief's shortlist,
    and whose "tier" is one of the brief's rows. Respect anything in "other" (gender, age, location, language, brands to avoid...).
-6. Hunt for every tier that is still short of its target: use web search / Chrome to find REAL creators in that tier's follower range who fit
-   the products and "other". Public info only: handle, follower count, niches, location; a public email only if shown. Viewing profiles is fine;
-   never message anyone. POST /api/creators [ ... ] with "source":"claude-hunt" and short "notes" on why they fit. At most 20 new creators
-   per run. Then repeat step 5 once.
+6. Hunt for every tier that is still short of its target. Prefer Meta's Creator Marketing Hub (business.facebook.com/creator_marketing_hub/creator_discovery,
+   via Chrome, logged into the brand's Meta Business account) when that tab is available: filter by category and follower range, read followers/engagement
+   straight off each card (real Meta numbers, not guesses), open the card for the IG handle. Fall back to web search / open Chrome for whatever it doesn't
+   surface. Either way: REAL creators in that tier's follower range who fit the products and "other". Public info only: handle, follower count, engagement
+   rate, niches, location; a public email only if shown. Viewing profiles is fine; never message anyone, and never use the Hub's own "Contact" button.
+   POST /api/creators [ ... ] with "source":"claude-hunt" (or "creator-marketing-hub" when found there) and short "notes" on why they fit. At most 20 new
+   creators per run. Then repeat step 5 once.
 7. POST /api/briefs/<_id>/shortlist {"items":[{"creatorId":"<id>","tier":"<tier>","score":<score>,"why":"<one short line>"}]}
    with up to the target per tier, best score first. The response lists any refused creators with a reason; that's fine.
 8. If nobody suitable was found at all: PATCH /api/briefs/<_id> {"status":"failed","note":"<what was tried, what would help>"}.

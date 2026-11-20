@@ -23,8 +23,15 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 
 ## Hunting new creators
 1. `GET /api/clients` to see what's wanted.
-2. Use web search / Claude in Chrome to find creators matching the niche. For each, collect: IG handle, follower count, rough engagement rate, niches, and (as contact info only) a **public** email if shown (bio, linked site, Linktree, YouTube About page). Never guess or fabricate emails or numbers. Leave a field out if you can't verify it.
-3. `POST /api/creators` with `source: "claude-hunt"` and short `notes` on why they fit.
+2. **Prefer Meta's Creator Marketing Hub** (`business.facebook.com/creator_marketing_hub/creator_discovery`, via Claude in Chrome, logged into the
+   brand's Meta Business account) when that tab is open: it's Meta's own creator-discovery tool, so followers/views/the "Interactions" % are real
+   numbers straight from Meta, not guesses. Switch the business selector (top right) to the right client first if more than one is connected. Use
+   its filters (category, follower range, country) to match the requirement, open each card for the IG handle, and read followers/engagement rate
+   straight off the page. Fall back to web search / open Chrome for niches or handles it doesn't surface. Either way, for each creator collect: IG
+   handle, follower count, engagement rate, niches, and (as contact info only) a **public** email if shown (bio, linked site, Linktree, YouTube About
+   page). Never guess or fabricate emails or numbers. Leave a field out if you can't verify it. Don't use the Hub's own "Contact" button — creators
+   still go through our own queue (`POST /api/outreach` / the hunt-then-search flow below), so caps, templates and no-double-contact rules apply.
+3. `POST /api/creators` with `source: "claude-hunt"` (or `"creator-marketing-hub"` when found there) and short `notes` on why they fit.
 
 ## Sending IG DMs (Claude in Chrome)
 1. `GET /api/outreach/next`. If `remaining` is 0, stop.
