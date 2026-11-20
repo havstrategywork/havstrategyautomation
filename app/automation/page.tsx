@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db, IG_CAP, ownerName, sentToday } from "@/lib/db";
+import { db, IG_CAP, sentToday } from "@/lib/db";
 import { controlState } from "@/lib/control";
 import { currentUser } from "@/lib/session";
 import { notify } from "@/lib/notify";
@@ -30,7 +30,6 @@ export default async function Automation() {
   const checks: [boolean, string, string][] = [
     [!!url, "APP_URL is set", url || "Set APP_URL to the hosted address (e.g. https://havstrategyautomation.vercel.app) so prompts and notifications link to it."],
     [key.length >= 16, "API_KEY is long enough", key.length >= 16 ? `${key.length} characters` : "Use a long random key (16+ characters); it is shared with Cowork."],
-    [!!ownerName(), "OWNER is set", ownerName() || "Set OWNER (e.g. akshit) so you and your teammate never touch each other's creators."],
     [!process.env.IG_ALLOWLIST, "Live mode (no IG_ALLOWLIST)", process.env.IG_ALLOWLIST ? `Test mode: only ${process.env.IG_ALLOWLIST} gets messages.` : "Real creators get messages."],
     [!!process.env.NOTIFY_URL, "Notifications (NOTIFY_URL)", process.env.NOTIFY_URL ? "Configured. Use the test button below." : "Not set: you won't be pinged for pauses, escalations or shortlists."],
     [FOLLOWUP_SCHEDULE.length > 0, "Follow-ups", FOLLOWUP_SCHEDULE.length ? `Up to ${FOLLOWUP_SCHEDULE.length}, on day ${FOLLOWUP_SCHEDULE.join(", ")} after the first DM, while there is no reply (one text per step in the campaign's follow-up).` : "Off (FOLLOWUP_SCHEDULE empty)."],

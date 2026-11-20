@@ -1,6 +1,6 @@
 // Queueing Instagram DMs. One place for the rules, used by the API (Cowork) and by the dashboard's "Approve" button.
 import { ObjectId } from "mongodb";
-import { db, igAllowed, inScope, ownerName, type Creator } from "./db";
+import { db, igAllowed, type Creator } from "./db";
 import { firstName, render } from "./template";
 import { DAY, FOLLOWUP_SCHEDULE, nextStep, stepTexts } from "./followup";
 import { notify } from "./notify";
@@ -18,7 +18,6 @@ export async function queueFirstDm(b: QueueIn): Promise<QueueOut> {
   const clientId = b.clientId && ObjectId.isValid(b.clientId) ? new ObjectId(b.clientId) : undefined;
   const c = await creators.findOne({ _id: creatorId });
   if (!c) return { queued: [], skipped: [], error: "creator not found", status: 404 };
-  if (!(await inScope(c, true))) return { queued: [], skipped: [], error: "creator belongs to another person (OWNER); leave them to their owner", status: 403 };
   const greet = String(b.name ?? "").trim() || firstName(c.name);
   let message = b.igMessage;
   if (b.useTemplate) { // the client's pasted message, word for word: only {{name}}/{{handle}} change
@@ -32,7 +31,6 @@ export async function queueFirstDm(b: QueueIn): Promise<QueueOut> {
   if (!testRecipient && (await outreach.findOne({ creatorId, channel: "ig", kind: { $ne: "followup" }, status: { $in: ["queued", "sent"] } }))) return { queued: [], skipped: ["ig"] };
   const doc = { creatorId, ...(clientId && { clientId }), channel: "ig" as const, kind: "first" as const, greet, message, status: "queued" as const, createdAt: new Date() };
   const queued = [{ ...doc, _id: (await outreach.insertOne(doc)).insertedId }];
-  if (ownerName() && !c.owner) await creators.updateOne({ _id: creatorId }, { $set: { owner: ownerName() } }); // claim the creator
   if (clientId) await creators.updateOne({ _id: creatorId }, { $addToSet: { suggestedVia: clientId } }); // queuing for a client = suggesting them
   return { queued, skipped: [] };
 }
@@ -47,7 +45,6 @@ export async function enqueueDueFollowups() {
   const due = await creators.find({ status: "DM Sent", dmSentAt: { $lte: new Date(now - FOLLOWUP_SCHEDULE[0] * DAY), $gte: new Date(now - (last + 4) * DAY) }, needsHuman: { $exists: false }, igHandle: { $exists: true } }).limit(500).toArray();
   let n = 0;
   for (const c of due) {
-    if (!(await inScope(c))) continue;
     const prev = await outreach.find({ creatorId: c._id, kind: "followup" }).toArray(); // queued, sent or failed all count as used
     if (prev.some((o) => o.status === "queued")) continue; // one waiting already
     // follow-ups a person typed by hand in Instagram count too: logged human messages after the first DM, or the creator's own "Follow-up sent" date

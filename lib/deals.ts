@@ -1,7 +1,7 @@
 // Agreed deals -> Google Sheet (human reviews it, hands it to the client) -> human uploads the client's Yes/No file back -> guidelines email to the creators the client said Yes to.
 import { ObjectId } from "mongodb";
 import nodemailer from "nodemailer";
-import { db, inScope, sentToday, type Creator } from "./db";
+import { db, sentToday, type Creator } from "./db";
 import { tierOf } from "./fields";
 import { addTab, createSheet, mergeDocToPdf } from "./sheet";
 import { emailAllowed, handleKey, parseRows, splitSubject } from "./dealrules";
@@ -15,7 +15,6 @@ export async function readyDeals() {
   const { creators, outreach } = await db();
   const out = new Map<string, Creator[]>();
   for (const c of await creators.find({ status: "Agreed", agreedRate: { $exists: true }, batchId: { $exists: false } }).limit(500).toArray()) {
-    if (!(await inScope(c))) continue;
     const first = c.dealClientId ? null : await outreach.findOne({ creatorId: c._id, clientId: { $exists: true }, kind: { $ne: "followup" } }, { sort: { createdAt: 1 } });
     const cid = c.dealClientId ?? first?.clientId ?? c.suggestedVia?.[0];
     if (cid) out.set(String(cid), [...(out.get(String(cid)) ?? []), c]);
@@ -119,7 +118,6 @@ export async function sendGuidelines(clientId: ObjectId) {
   const cap = Number(process.env.EMAIL_DAILY_CAP ?? 100);
   const res = { sent: 0, noEmail: [] as string[], blocked: 0, failed: 0, capped: false };
   for (const c of await creators.find({ dealClientId: clientId, clientDecision: "yes", guidelinesSentAt: { $exists: false } }).toArray()) {
-    if (!(await inScope(c))) continue;
     if (!c.email) { res.noEmail.push(c.igHandle ? `@${c.igHandle}` : c.name); continue; }
     if (!emailAllowed(c.email, process.env.EMAIL_ALLOWLIST)) { res.blocked++; continue; }
     if ((await sentToday("email")) >= cap) { res.capped = true; break; }

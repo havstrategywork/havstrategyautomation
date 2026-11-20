@@ -148,10 +148,6 @@ agent/manager takes over; or a message is off-topic or looks like spam.
 
 **Stop signals:** if they say stop/not interested/unsubscribe, reply once with a short polite close, set `status:"Declined"`, and never message again.
 Test mode (`IG_ALLOWLIST`) applies to replies too: the server refuses anyone not on the allowlist.
-**Two people, one database:** `OWNER` (in `.env.local`, e.g. `OWNER=akshit`) limits this app to creators it owns, even when both people work the same client.
-Queueing a DM claims an unowned creator for OWNER. When set, the server only lists, queues, sends, logs or replies for creators owned by OWNER; everyone else is
-invisible (watch/next/pending) or refused (403 "creator belongs to another person"). A 403 like that means: skip the creator, never open the thread. The other
-person sets their own `OWNER` in their own copy of the app.
 
 ## The automated pipeline (scheduled, unattended)
 1. **Brief**: the human fills the "New brief" chat in the dashboard. The server saves the client with the exact budgets per tier, follower range,

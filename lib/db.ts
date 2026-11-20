@@ -19,7 +19,6 @@ export type Creator = {
   phone?: string;
   contactSource?: string; // where the email/phone came from
   suggestedVia?: ObjectId[]; // client ids
-  owner?: string; // which person's outreach this creator belongs to (see OWNER); set when a DM is queued
   status?: string; // one of STATUSES; missing = "New"
   dmSentAt?: Date;
   response?: string;
@@ -105,7 +104,7 @@ export type DealBatch = { _id?: ObjectId; clientId: ObjectId; sheetId?: string; 
 //   -> approved (you approve in the dashboard; the DMs are queued right then) ; "Find more" sends it back to new ; failed = Cowork gave up (note says why)
 export type ShortlistItem = { creatorId: ObjectId; tier: string; score?: number; why?: string; decision?: "approved" | "rejected" };
 export type BriefDoc = {
-  _id?: ObjectId; owner?: string; createdAt: Date; updatedAt: Date;
+  _id?: ObjectId; createdAt: Date; updatedAt: Date;
   status: "new" | "shortlisting" | "awaiting_approval" | "approved" | "failed" | "archived";
   client: string; products: { name: string; about: string }[]; rows: { tier: string; count: number; budget: number }[];
   currency: string; other: string; message: string; followUp: string; sheetUrl?: string;
@@ -168,11 +167,3 @@ export async function sentToday(channel: "ig" | "email") {
 // Enforced server-side in /api/outreach/next, and /api/outreach/:id/sent, so a prompt can't bypass it.
 const allowList = (v?: string) => (v ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
 export const igAllowed = (handle?: string) => { const l = allowList(process.env.IG_ALLOWLIST); return !l.length || (!!handle && l.includes(handle.toLowerCase())); };
-// Ownership guard (two people share the creator database, even for the same client). If OWNER is set (e.g. OWNER=akshit), this app
-// only touches creators whose `owner` is that name. Queueing a DM claims an unowned creator for OWNER; someone else's creator is refused.
-// Enforced server-side in outreach/messages/conversations routes, so a prompt can't bypass it.
-export const ownerName = () => (process.env.OWNER ?? "").trim().toLowerCase();
-export async function inScope(c?: { owner?: string } | null, allowUnowned = false) {
-  const me = ownerName();
-  return !me || (c?.owner ? c.owner === me : allowUnowned);
-}

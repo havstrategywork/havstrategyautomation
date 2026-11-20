@@ -1,7 +1,7 @@
 // Briefs from the dashboard chat -> clients + shortlists. The exact numbers (budgets per tier, follower range, message texts)
 // are saved by the server straight from the form, so Cowork never has to retype them; Cowork adds niches/offer and finds creators.
 import { ObjectId } from "mongodb";
-import { db, inScope, ownerName, type BriefDoc, type ShortlistItem } from "./db";
+import { db, type BriefDoc, type ShortlistItem } from "./db";
 import { cleanRows, clientFieldsFromBrief, type BriefInput } from "./brief";
 import { upsertClient } from "./clients";
 import { notify } from "./notify";
@@ -20,7 +20,7 @@ export async function submitBrief(raw: BriefInput) {
   if (!b.products.length) throw new Error("add at least one product");
   const client = await upsertClient(clientFieldsFromBrief(b));
   const now = new Date();
-  const doc: BriefDoc = { ...b, owner: ownerName() || undefined, createdAt: now, updatedAt: now, status: "new", clientId: client._id as ObjectId, shortlist: [], runs: 0 };
+  const doc: BriefDoc = { ...b, createdAt: now, updatedAt: now, status: "new", clientId: client._id as ObjectId, shortlist: [], runs: 0 };
   return (await (await db()).briefs.insertOne(doc)).insertedId;
 }
 
@@ -34,19 +34,18 @@ export async function editBrief(briefId: ObjectId, raw: BriefInput) {
   };
   if (!b.products.length) throw new Error("add at least one product");
   const { briefs, clients } = await db();
-  const existing = await briefs.findOne({ _id: briefId, ...mine() });
+  const existing = await briefs.findOne({ _id: briefId });
   if (!existing) throw new Error("campaign not found");
   if (existing.clientId) await clients.updateOne({ _id: existing.clientId }, { $set: clientFieldsFromBrief(b) });
   await briefs.updateOne({ _id: briefId }, { $set: { ...b, updatedAt: new Date() } });
 }
 
 export const STALE_MS = 90 * 60e3; // a "shortlisting" claim older than this belongs to a crashed run
-export const mine = () => (ownerName() ? { $or: [{ owner: ownerName() }, { owner: { $exists: false } }] } : {});
 
 /** Cowork posts candidates. Only reachable, uncontacted creators this person may contact are kept; the rest come back with a reason. */
 export async function addShortlist(briefId: ObjectId, items: { creatorId: string; tier?: string; score?: number; why?: string }[]) {
   const { briefs, creators, outreach } = await db();
-  const brief = await briefs.findOne({ _id: briefId, ...mine() });
+  const brief = await briefs.findOne({ _id: briefId });
   if (!brief) return { error: "brief not found", status: 404 };
   const have = new Set(brief.shortlist.map((s) => String(s.creatorId)));
   const added: ShortlistItem[] = [], rejected: { creatorId: string; reason: string }[] = [];
@@ -55,7 +54,7 @@ export async function addShortlist(briefId: ObjectId, items: { creatorId: string
     const id = new ObjectId(it.creatorId);
     const c = await creators.findOne({ _id: id });
     const reason = !c ? "creator not found" : !c.igHandle ? "no Instagram handle" : have.has(String(id)) ? "already on this shortlist"
-      : !(await inScope(c, true)) ? "belongs to another person (OWNER)" : c.status === "Declined" ? "declined before" : c.undeliverable ? "can't receive our DMs (not delivered before)"
+      : c.status === "Declined" ? "declined before" : c.undeliverable ? "can't receive our DMs (not delivered before)"
       : (await outreach.findOne({ creatorId: id, kind: { $ne: "followup" }, status: { $in: ["queued", "sent"] } })) ? "already contacted" : "";
     if (reason) { rejected.push({ creatorId: it.creatorId, reason }); continue; }
     have.add(String(id));

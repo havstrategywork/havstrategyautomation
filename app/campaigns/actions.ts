@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
-import { editBrief, mine, queueShortlist, submitBrief } from "@/lib/briefs";
+import { editBrief, queueShortlist, submitBrief } from "@/lib/briefs";
 import { docIdFromUrl, type BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
 import { render } from "@/lib/template";
@@ -48,7 +48,7 @@ export async function approveBrief(fd: FormData) {
   await requireUser();
   const id = idOf(fd);
   const { briefs, clients } = await db();
-  const b = await briefs.findOne({ _id: id, status: "awaiting_approval", ...mine() });
+  const b = await briefs.findOne({ _id: id, status: "awaiting_approval" });
   const cl = b?.clientId && (await clients.findOne({ _id: b.clientId }));
   if (!b || !cl) redirect("/campaigns?err=" + encodeURIComponent("That campaign is no longer waiting for approval."));
 
@@ -137,13 +137,13 @@ export async function sendGuidelinesAction(fd: FormData) {
 /** Back to Cowork for more candidates (it skips everyone already on the shortlist). */
 export async function findMore(fd: FormData) {
   await requireUser();
-  await (await db()).briefs.updateOne({ _id: idOf(fd), status: { $in: ["approved", "awaiting_approval", "failed"] }, ...mine() }, { $set: { status: "new", note: "More creators requested.", updatedAt: new Date() } });
+  await (await db()).briefs.updateOne({ _id: idOf(fd), status: { $in: ["approved", "awaiting_approval", "failed"] } }, { $set: { status: "new", note: "More creators requested.", updatedAt: new Date() } });
   revalidatePath("/campaigns");
 }
 
 export async function archiveBrief(fd: FormData) {
   await requireUser();
-  await (await db()).briefs.updateOne({ _id: idOf(fd), ...mine() }, { $set: { status: "archived", updatedAt: new Date() } });
+  await (await db()).briefs.updateOne({ _id: idOf(fd) }, { $set: { status: "archived", updatedAt: new Date() } });
   revalidatePath("/campaigns");
 }
 
@@ -152,7 +152,7 @@ export async function archiveBrief(fd: FormData) {
 export async function deleteBrief(fd: FormData) {
   await requireUser();
   await back(async () => {
-    const r = await (await db()).briefs.deleteOne({ _id: idOf(fd), status: "archived", ...mine() });
+    const r = await (await db()).briefs.deleteOne({ _id: idOf(fd), status: "archived" });
     if (!r.deletedCount) throw new Error("archive the campaign first, then delete it");
     return "Campaign deleted.";
   });

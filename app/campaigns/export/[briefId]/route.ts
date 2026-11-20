@@ -1,7 +1,6 @@
 import { ObjectId } from "mongodb";
 import { db } from "@/lib/db";
 import { exportCsv } from "@/lib/csv";
-import { mine } from "@/lib/briefs";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +10,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ briefId
   const { briefId } = await params;
   if (!ObjectId.isValid(briefId)) return new Response("bad id", { status: 400 });
   const { briefs, creators, clients } = await db();
-  const b = await briefs.findOne({ _id: new ObjectId(briefId), ...mine() });
+  const b = await briefs.findOne({ _id: new ObjectId(briefId) });
   if (!b) return new Response("not found", { status: 404 });
   const names = new Map((await clients.find().toArray()).map((c) => [String(c._id), c.name]));
   const rows = await creators.find({ _id: { $in: b.shortlist.map((s) => s.creatorId) } }).toArray();

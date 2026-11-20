@@ -1,5 +1,5 @@
 import { unauthorized } from "@/lib/auth";
-import { db, IG_CAP, igAllowed, inScope, sentToday } from "@/lib/db";
+import { db, IG_CAP, igAllowed, sentToday } from "@/lib/db";
 import { isPaused } from "@/lib/control";
 import { conversationActive, enqueueDueFollowups } from "@/lib/outreach";
 
@@ -21,9 +21,9 @@ export async function GET(req: Request) {
       await outreach.updateOne({ _id: o._id }, { $set: { status: "failed", error: "conversation active" } });
       return null;
     }
-    return { id: o._id, followUp: o.kind === "followup", message: o.message, igHandle: c?.igHandle, igUrl: c?.igHandle && `https://www.instagram.com/${c.igHandle}/`, mine: await inScope(c) };
+    return { id: o._id, followUp: o.kind === "followup", message: o.message, igHandle: c?.igHandle, igUrl: c?.igHandle && `https://www.instagram.com/${c.igHandle}/` };
   }))).filter((i): i is NonNullable<typeof i> => !!i);
   all.sort((a, b) => +b.followUp - +a.followUp); // follow-ups first (stable), so a backlog of first DMs can't starve them under the daily cap
-  const items = all.filter((i) => i.mine && igAllowed(i.igHandle)).slice(0, Math.min(remaining, limit)).map(({ mine, ...i }) => i); // allowlist = test mode; mine = CLIENT_SCOPE
+  const items = all.filter((i) => igAllowed(i.igHandle)).slice(0, Math.min(remaining, limit)); // allowlist = test mode
   return Response.json({ cap: IG_CAP, sentToday: sent, remaining, testMode: !!process.env.IG_ALLOWLIST, heldBack: all.length - items.length, items });
 }

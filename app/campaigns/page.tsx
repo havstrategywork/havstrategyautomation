@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ObjectId } from "mongodb";
 import { db, type BriefDoc } from "@/lib/db";
-import { mine } from "@/lib/briefs";
 import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
@@ -28,7 +27,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
   const onSheet = await creators.find({ batchId: { $in: batches.map((b) => b._id!) } }).toArray();
   const reviewClients = [...new Set([...waiting.keys(), ...batches.map((b) => String(b.clientId))])];
   const reviewNames = new Map((await clients.find({ _id: { $in: reviewClients.map((i) => new ObjectId(i)) } }).toArray()).map((c) => [String(c._id), c]));
-  const query = { ...mine(), ...(all ? {} : { status: { $ne: "archived" as const } }) };
+  const query = all ? {} : { status: { $ne: "archived" as const } };
 
   const PAGE_SIZE = 15;
   const total = await briefs.countDocuments(query);

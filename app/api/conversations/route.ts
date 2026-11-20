@@ -1,5 +1,5 @@
 import { unauthorized } from "@/lib/auth";
-import { db, igAllowed, inScope } from "@/lib/db";
+import { db, igAllowed } from "@/lib/db";
 import { clientFor, threads } from "@/lib/threads";
 
 /**
@@ -21,7 +21,6 @@ export async function GET(req: Request) {
     const out = [];
     for (const c of rows.filter((c) => igAllowed(c.igHandle))) {
       if (out.length >= limit) break;
-      if (!(await inScope(c))) continue; // another client's creator: never in this worker's watch list
       await creators.updateOne({ _id: c._id }, { $set: { watchedAt: new Date() } });
       const last = await messages.find({ creatorId: c._id! }).sort({ at: -1 }).limit(1).next();
       // lastLogged = the newest message already in our log. Post only messages that come AFTER it in the Instagram thread.
@@ -32,7 +31,7 @@ export async function GET(req: Request) {
 
   const out = [];
   for (const { creator: c, last, thread } of await threads()) {
-    if (last.direction !== "in" || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle) || !(await inScope(c))) continue;
+    if (last.direction !== "in" || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle)) continue;
     const cl = await clientFor(c);
     out.push({
       creatorId: c._id, name: c.name, igHandle: c.igHandle, status: c.status, quotedRate: c.quotedRate, agreedRate: c.agreedRate,

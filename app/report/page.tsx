@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { db, ownerName } from "@/lib/db";
-import { mine as myBriefs } from "@/lib/briefs";
+import { db } from "@/lib/db";
 import { PageHead } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -50,16 +49,14 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
     outreach.find({ channel: "ig", $or: [{ createdAt: { $gte: since } }, { sentAt: { $gte: since } }] }).toArray(),
     messages.find({ at: { $gte: since } }).toArray(),
     runs.find({ startedAt: { $gte: since } }).sort({ startedAt: 1 }).toArray(),
-    briefs.find({ $and: [{ $or: [{ createdAt: { $gte: since } }, { updatedAt: { $gte: since } }] }, myBriefs()] }).toArray(),
+    briefs.find({ $or: [{ createdAt: { $gte: since } }, { updatedAt: { $gte: since } }] }).toArray(),
     outreach.find({ channel: "email", kind: "guidelines", status: "sent", sentAt: { $gte: since } }).toArray(),
     dealBatches.find({ $or: [{ createdAt: { $gte: since } }, { answeredAt: { $gte: since } }, { sharedAt: { $gte: since } }] }).toArray(),
     clients.find({}).toArray(),
   ]);
   const cname = new Map(cls.map((c) => [String(c._id), c.name]));
 
-  // Only this person's creators (OWNER) count for outreach/chat numbers; hunting is shared so it counts everyone's.
-  const me = ownerName();
-  const mine = new Map(cs.filter((c) => !me || c.owner === me).map((c) => [String(c._id), c]));
+  const mine = new Map(cs.map((c) => [String(c._id), c]));
   const who = (id: unknown) => { const c = mine.get(String(id)); return c ? (c.igHandle ? `@${c.igHandle}` : c.name) : ""; };
 
   for (const c of cs) { const d = c.source === "claude-hunt" ? at(c.createdAt) : undefined; if (d) d.hunted++; }
@@ -108,7 +105,7 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
 
   return (
     <>
-      <PageHead title="Daily report" sub={`Everything Claude and the team did each day (India time) · last ${span} days${me ? ` · ${me}'s creators` : ""}`} />
+      <PageHead title="Daily report" sub={`Everything Claude and the team did each day (India time) · last ${span} days`} />
       <div className="row" style={{ marginBottom: "1rem" }}>{[7, 14, 30].map(tab)}</div>
       <div className="tablewrap">
         <table>
