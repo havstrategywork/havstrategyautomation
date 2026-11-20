@@ -15,7 +15,9 @@ export async function GET(req: Request) {
     const { creators } = await db();
     const limit = Math.min(50, Number(new URL(req.url).searchParams.get("limit")) || 15);
     const live = (s?: string) => s === "Replied" || s === "Negotiating";
-    const rows = (await creators.find({ igHandle: { $exists: true }, $or: [{ dmSentAt: { $exists: true } }, { status: { $in: ["DM Sent", "Replied", "Negotiating"] } }], status: { $nin: ["Declined"] }, undeliverable: { $exists: false } }).toArray())
+    // ponytail: once a thread is escalated or the deal is settled, a human owns it and Claude has nothing left to do there, so it drops out of the watch rotation
+    // (a reply typed in Instagram after that point won't be logged). Re-add it if that gap matters.
+    const rows = (await creators.find({ igHandle: { $exists: true }, $or: [{ dmSentAt: { $exists: true } }, { status: { $in: ["DM Sent", "Replied", "Negotiating"] } }], status: { $nin: ["Declined", "Agreed"] }, needsHuman: { $exists: false }, undeliverable: { $exists: false } }).toArray())
       .sort((a, b) => +live(b.status) - +live(a.status) || +(a.watchedAt ?? a.dmSentAt ?? 0) - +(b.watchedAt ?? b.dmSentAt ?? 0));
     const { messages } = await db();
     const out = [];
