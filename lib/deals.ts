@@ -23,21 +23,35 @@ export async function readyDeals() {
   return out;
 }
 
+/** Same row shape lib/sheet.ts#HEADER expects, Google Sheet or plain .xlsx. */
+export const reviewRows = (cs: Creator[]) => cs.map((c) => [
+  String(c._id), c.igHandle ? `@${c.igHandle}` : c.name, c.igHandle ? `https://www.instagram.com/${c.igHandle}/` : "",
+  c.followers, tierOf(c.followers), c.engagementRate ?? "", c.location ?? "", c.agreedRate ?? "", (c.notes ?? "").slice(0, 200),
+]);
+
 /** Builds the review sheet for one client's waiting deals. Nothing is sent anywhere: a human reviews it, then gives it to the client by hand (markShared). */
 export async function createBatch(clientId: ObjectId) {
   const { clients, creators, dealBatches } = await db();
   const cl = await clients.findOne({ _id: clientId });
   const ready = (await readyDeals()).get(String(clientId)) ?? [];
   if (!cl || !ready.length) throw new Error("no agreed deals are waiting for this client");
-  const rows = ready.map((c) => [
-    String(c._id), c.igHandle ? `@${c.igHandle}` : c.name, c.igHandle ? `https://www.instagram.com/${c.igHandle}/` : "",
-    c.followers, tierOf(c.followers), c.engagementRate ?? "", c.location ?? "", c.agreedRate ?? "", (c.notes ?? "").slice(0, 200),
-  ]);
+  const rows = reviewRows(ready);
   const sid = cl.sheetUrl ? sheetIdFromUrl(cl.sheetUrl) : null; // the client's own sheet from the brief: add a "Content creators" tab there; else make a fresh sheet
   const sheet = sid ? await addTab(sid, rows) : await createSheet(`${cl.name}: creators to approve (${new Date().toISOString().slice(0, 10)})`, rows);
   const _id = (await dealBatches.insertOne({ clientId, sheetId: sheet.id, tab: sheet.tab, url: sheet.url, creatorIds: ready.map((c) => c._id!), createdAt: new Date() })).insertedId;
   await creators.updateMany({ _id: { $in: ready.map((c) => c._id!) } }, { $set: { batchId: _id, dealClientId: clientId } });
   return { url: sheet.url, count: ready.length };
+}
+
+/** Same as createBatch, but for a client with no sheetUrl: skips Google Sheets entirely. The human reviews it as a plain "Download .xlsx"
+ *  link instead of "open sheet" (app/campaigns/sheet/[batchId]/route.ts regenerates the file from creatorIds on each download). */
+export async function createLocalBatch(clientId: ObjectId) {
+  const { creators, dealBatches } = await db();
+  const ready = (await readyDeals()).get(String(clientId)) ?? [];
+  if (!ready.length) throw new Error("no agreed deals are waiting for this client");
+  const _id = (await dealBatches.insertOne({ clientId, creatorIds: ready.map((c) => c._id!), createdAt: new Date() })).insertedId;
+  await creators.updateMany({ _id: { $in: ready.map((c) => c._id!) } }, { $set: { batchId: _id, dealClientId: clientId } });
+  return { count: ready.length };
 }
 
 /** Scheduled: pushes Agreed deals straight into the client's OWN sheet from the brief. Never creates a fresh sheet unattended —

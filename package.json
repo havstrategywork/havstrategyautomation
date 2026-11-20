@@ -17,7 +17,8 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "read-excel-file": "^9.3.17",
-    "uploadthing": "^7.7.4"
+    "uploadthing": "^7.7.4",
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

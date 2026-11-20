@@ -9,7 +9,7 @@ import { editBrief, mine, queueShortlist, submitBrief } from "@/lib/briefs";
 import { docIdFromUrl, type BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
 import { render } from "@/lib/template";
-import { applyAnswers, createBatch, markShared, sendGuidelines } from "@/lib/deals";
+import { applyAnswers, createBatch, createLocalBatch, markShared, sendGuidelines } from "@/lib/deals";
 import { csvRows } from "@/lib/dealrules";
 import { xlsxRows } from "@/lib/xlsx";
 
@@ -78,6 +78,15 @@ export async function createSheetAction(fd: FormData) {
   await back(async () => {
     const r = await createBatch(idOf(fd));
     return `Sheet created for ${r.count} creator${r.count === 1 ? "" : "s"}. Review it, give it to the client yourself, then mark it as given.`;
+  });
+}
+
+/** For a client with no sheetUrl: skips Google Sheets, the batch shows up below with a "Download .xlsx" link instead of "open sheet". */
+export async function createLocalBatchAction(fd: FormData) {
+  await requireUser();
+  await back(async () => {
+    const r = await createLocalBatch(idOf(fd));
+    return `Ready for ${r.count} creator${r.count === 1 ? "" : "s"}: download the .xlsx below, review it, give it to the client yourself, then mark it as given.`;
   });
 }
 

@@ -97,7 +97,8 @@ export type Outreach = {
 };
 
 // One review sheet sent to a client: the Agreed creators on it, and the Google Sheet they answer in.
-export type DealBatch = { _id?: ObjectId; clientId: ObjectId; sheetId: string; tab?: string; url: string; creatorIds: ObjectId[]; createdAt: Date; sharedAt?: Date /* a human gave it to the client */; answeredAt?: Date /* a human uploaded the client's answers */ };
+// sheetId/url are unset for a client with no sheetUrl: the review happens as a plain .xlsx download instead of a Google Sheet (see lib/deals.ts#createLocalBatch).
+export type DealBatch = { _id?: ObjectId; clientId: ObjectId; sheetId?: string; tab?: string; url?: string; creatorIds: ObjectId[]; createdAt: Date; sharedAt?: Date /* a human gave it to the client */; answeredAt?: Date /* a human uploaded the client's answers */ };
 
 // A campaign brief from the dashboard chat. Lifecycle (who moves it):
 //   new (dashboard) -> shortlisting (Cowork claims it) -> awaiting_approval (Cowork posted a shortlist)
