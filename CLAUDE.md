@@ -90,7 +90,7 @@ Never lower `minScore` or drop the niche to make the numbers look better. Never 
 Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min). The app stores the thread; Chrome only reads and types.
 
 **Each run:**
-1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (max 15 per run; live conversations first, then whoever was read longest ago).
+1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (`?limit=50`, live conversations first, then whoever was read longest ago; each call rotates to the next batch, so repeat it until a creator comes back or 60 chats are checked: every creator who wrote gets answered in the run).
    **Never search or scroll the inbox**: it is shared with other clients and shows display names, so you would match the wrong person. Open each entry's `igUrl`
    (their profile) and click Message: that opens exactly their chat. Check the header is the same profile; if you can't confirm it, skip that creator. Never read, open,
    or reply to anyone not on this list (private messages, friends, other business). Not finding a chat is never a reason to pause: pause is only for Instagram restrictions.
