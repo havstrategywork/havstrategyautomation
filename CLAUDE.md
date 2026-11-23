@@ -203,3 +203,5 @@ Role `social` = the SM team (`/social/*`, no org management; `/social/orgs` is a
 with `SECRETS_KEY`, falling back to `API_KEY`); their Instagram accounts are imported from Metricool brands (`socialAccounts`, via `lib/metricool.ts`, `GET /admin/simpleProfiles`).
 Metricool needs an Advanced/Custom plan (not available yet); its OpenAPI is at https://app.metricool.com/api/swagger.json. Reports show selected accounts side by side (Step 2).
 Chat bot builder (Step 3): rule/flow builder with trigger, message and question nodes; buttons, images, links, carousels; official Meta Instagram Messaging API, dev mode first; no conversation log.
+Reports (Step 2, `/social/reports`): per-account columns from Metricool v2 analytics (`lib/igreport.ts`): daily timelines for the previous + current period in one call, posts/reels/stories lists, audience (`/stats/{gender,age,country,city}/instagram`, current state, no dates).
+Date range (7/30/90 or custom), CSV export (`/social/reports/export`), PDF = browser print. Each section fails on its own with Metricool's message. Demographic endpoint params are undocumented in the Swagger: verify with a real token.

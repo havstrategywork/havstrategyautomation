@@ -2,7 +2,7 @@ const dev = process.env.NODE_ENV !== "production";
 // ponytail: 'unsafe-inline' scripts/styles because Next injects inline bootstraps; nonce-based CSP needs fully dynamic rendering.
 const csp = [
   "default-src 'self'", `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`, "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:", "font-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'self'", "base-uri 'self'", "object-src 'none'",
+  "img-src 'self' data: blob: https:", // https: so Instagram/Metricool thumbnails in the social reports load (their CDN hosts vary) "font-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'self'", "base-uri 'self'", "object-src 'none'",
 ].join("; ");
 
 export default {
