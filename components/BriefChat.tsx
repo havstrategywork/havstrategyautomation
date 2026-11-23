@@ -4,6 +4,7 @@
 // A copy-paste Cowork prompt is still offered as a manual fallback. The draft is kept in localStorage.
 import { useEffect, useRef, useState } from "react";
 import { TIERS } from "@/lib/fields";
+import Select from "@/components/mui/Select";
 import Link from "next/link";
 import { buildPrompt, cleanRows, money, sheetIdFromUrl, tierRange, type Brief, type Row } from "@/lib/brief";
 import { editBriefAction, submitBriefAction } from "@/app/campaigns/actions";
@@ -115,9 +116,7 @@ export default function BriefChat({ appUrl = "", apiKey = "", edit }: { appUrl?:
                     <tbody>
                       {b.rows.map((r, i) => (
                         <tr key={i}>
-                          <td><select value={r.tier} onChange={(e) => setRow(i, { tier: e.target.value })}>
-                            {TIERS.map((t) => <option key={t} value={t} disabled={used(i).has(t)}>{t} ({tierRange(t)})</option>)}
-                          </select></td>
+                          <td><Select value={r.tier} onChange={(v) => setRow(i, { tier: v })} ariaLabel="Creator type" options={TIERS.map((t) => ({ value: t, label: `${t} (${tierRange(t)})`, disabled: used(i).has(t) }))} /></td>
                           <td><input type="number" min={1} max={500} value={r.count || ""} onChange={(e) => setRow(i, { count: Math.max(0, Math.floor(+e.target.value)) })} /></td>
                           <td><input type="number" min={0} step={500} value={r.budget || ""} onChange={(e) => setRow(i, { budget: Math.max(0, +e.target.value) })} /></td>
                           <td>{b.rows.length > 1 && <button className="icon-btn" aria-label="Remove row" onClick={() => set({ rows: b.rows.filter((_, j) => j !== i) })}>×</button>}</td>
@@ -129,7 +128,7 @@ export default function BriefChat({ appUrl = "", apiKey = "", edit }: { appUrl?:
                 </div>
                 <div className="row spread">
                   <button className="ghost small-btn" disabled={b.rows.length >= TIERS.length} onClick={() => set({ rows: [...b.rows, { tier: TIERS.find((t) => !b.rows.some((r) => r.tier === t))!, count: 1, budget: 0 }] })}>+ Add row</button>
-                  <label className="cur">Currency<select value={b.currency} onChange={(e) => set({ currency: e.target.value })}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+                  <span className="cur">Currency<Select compact value={b.currency} onChange={(v) => set({ currency: v })} ariaLabel="Currency" options={[...CURRENCIES]} /></span>
                 </div>
                 {rows.length !== b.rows.length && <div className="small muted">Every row needs a count and a budget.</div>}
               </div>

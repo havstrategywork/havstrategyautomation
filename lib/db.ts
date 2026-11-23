@@ -126,9 +126,8 @@ export type MailThread = {
 };
 export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
 
-// Social-media dashboard. An org holds its Metricool login (token stored encrypted, see lib/secrets.ts); its Instagram accounts are imported from the Metricool brands.
-export type Org = { _id?: ObjectId; name: string; metricool?: { userId: string; token: string; syncedAt?: Date }; createdAt: Date };
-export type SocialAccount = { _id?: ObjectId; orgId: ObjectId; blogId: number; brand: string; igHandle: string; picture?: string; connection?: string; syncedAt: Date };
+// Social-media dashboard. An org groups the Instagram accounts of one client; accounts are the Meta connections below.
+export type Org = { _id?: ObjectId; name: string; createdAt: Date };
 
 // Chat bots. A connection = one Instagram account the org's client approved through Meta login (token stored encrypted). A flow belongs to one connection.
 export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
@@ -157,7 +156,6 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
   await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
   await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
-  await d.collection("socialAccounts").createIndex({ orgId: 1, blogId: 1 }, { unique: true });
   await d.collection("botConnections").createIndex({ igId: 1 }, { unique: true });
   await d.collection("botFlows").createIndex({ igId: 1, createdAt: 1 });
   await d.collection("botSessions").createIndex({ at: 1 }, { expireAfterSeconds: 24 * 3600 });
@@ -182,7 +180,6 @@ export async function db() {
     mailThreads: d.collection<MailThread>("mailThreads"),
     mailRuns: d.collection<MailRun>("mailRuns"),
     orgs: d.collection<Org>("orgs"),
-    socialAccounts: d.collection<SocialAccount>("socialAccounts"),
     botConnections: d.collection<BotConnection>("botConnections"),
     botFlows: d.collection<BotFlowDoc>("botFlows"),
     botSessions: d.collection<BotSession>("botSessions"),

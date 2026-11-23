@@ -1,88 +1,113 @@
 import assert from "node:assert";
 import { createServer } from "node:http";
-import { addDays, buildReport, days, METRICS, normalizeContent, parseRange, parseSeries, periodValue, pctChange, prevRange, reportRows, toCsv, toDist, topBy } from "./igreport.ts";
+import { addDays, buildReport, combineWindows, days, getTotals, label, normalizeMedia, normalizeStory, parseBreakdown, parseRange, parseTotals, pctChange, prevRange, reportRows, toCsv, topBy, TOTALS, unix, windows } from "./igreport.ts";
 
 // ---- dates ----
 assert.equal(addDays("2026-03-01", -1), "2026-02-28");
 assert.equal(days({ from: "2026-11-01", to: "2026-11-30" }), 30);
 assert.deepEqual(prevRange({ from: "2026-11-01", to: "2026-11-30" }), { from: "2026-10-02", to: "2026-10-31" });
+assert.equal(unix("1970-01-02"), 86400);
+assert.equal(unix("1970-01-02", true), 172799); // the last second of that day
+assert.deepEqual(windows({ from: "2026-11-01", to: "2026-11-10" }), [{ from: "2026-11-01", to: "2026-11-10" }]);
+assert.deepEqual(windows({ from: "2026-10-01", to: "2026-11-15" }).map((w) => days(w)), [30, 16]); // 46 days = 30 + 16
 assert.deepEqual(parseRange({ range: "7" }, "2026-11-23").range, { from: "2026-11-17", to: "2026-11-23" });
-assert.deepEqual(parseRange({}, "2026-11-23").range, { from: "2026-10-25", to: "2026-11-23" }); // default 30 days
-assert.deepEqual(parseRange({ from: "2026-11-01", to: "2026-11-10" }, "2026-11-23"), { range: { from: "2026-11-01", to: "2026-11-10" }, preset: "custom" });
+assert.deepEqual(parseRange({}, "2026-11-23").range, { from: "2026-10-25", to: "2026-11-23" });
 assert.equal(parseRange({ from: "2026-11-01", to: "2027-01-01" }, "2026-11-23").range.to, "2026-11-23"); // no future
-assert.equal(parseRange({ from: "2026-11-20", to: "2026-11-10" }, "2026-11-23").range.from, "2026-11-10"); // reversed -> one day
-assert.equal(days(parseRange({ from: "2020-01-01", to: "2026-11-10" }, "2026-11-23").range), 366); // capped
+assert.equal(parseRange({ from: "2026-11-20", to: "2026-11-10" }, "2026-11-23").range.from, "2026-11-10");
+assert.equal(days(parseRange({ from: "2020-01-01", to: "2026-11-10" }, "2026-11-23").range), 90); // capped at what Meta keeps
 assert.equal(parseRange({ from: "nonsense", to: "2026-11-10" }, "2026-11-23").preset, "30");
 
-// ---- series ----
-const resp = { data: [{ metric: "reach", values: [{ dateTime: "2026-11-02T00:00:00+01:00", value: 30 }, { dateTime: "2026-11-01T00:00:00+01:00", value: 10 }, { dateTime: "bad", value: 5 }] }] };
-const pts = parseSeries(resp);
-assert.deepEqual(pts, [{ t: "2026-11-01", v: 10 }, { t: "2026-11-02", v: 30 }]); // sorted, junk dropped
-assert.deepEqual(parseSeries({}), []);
-const r = { from: "2026-11-01", to: "2026-11-02" };
-assert.equal(periodValue(pts, r, "sum"), 40);
-assert.equal(periodValue(pts, r, "avg"), 20);
-assert.equal(periodValue(pts, r, "last"), 30);
-assert.equal(periodValue(pts, { from: "2026-12-01", to: "2026-12-02" }, "sum"), null); // nothing there is not zero
-assert.equal(pctChange(150, 100), 50);
-assert.equal(pctChange(50, 100), -50);
-assert.equal(pctChange(5, 0), null);
-assert.equal(pctChange(null, 5), null);
+// ---- parsing, in the shapes Meta documents ----
+assert.deepEqual(parseTotals({ data: [{ name: "reach", period: "day", total_value: { value: 224 } }, { name: "views", total_value: { value: 0 } }, { name: "likes" }, { name: "saves", values: [{ value: 7 }] }] }), { reach: 224, views: 0, saves: 7 }); // no value = absent, not 0
+assert.deepEqual(parseTotals(null), {});
+const bd = parseBreakdown({ data: [
+  { name: "reach", total_value: { value: 224, breakdowns: [{ dimension_keys: ["media_product_type"], results: [{ dimension_values: ["CAROUSEL_CONTAINER"], value: 100 }, { dimension_values: ["POST"], value: 124 }] }] } },
+  { name: "follower_demographics", total_value: { breakdowns: [{ dimension_keys: ["timeframe", "country"], results: [{ dimension_values: ["THIS_MONTH", "IN"], value: 7 }, { dimension_values: ["THIS_MONTH", "US"], value: 3 }, { dimension_values: ["THIS_MONTH", "IN"], value: 2 }, { dimension_values: ["THIS_MONTH", "XX"], value: 0 }] }] } },
+] });
+assert.deepEqual(bd.reach, [{ key: "POST", value: 124 }, { key: "CAROUSEL_CONTAINER", value: 100 }]);
+assert.deepEqual(bd.follower_demographics, [{ key: "IN", value: 9 }, { key: "US", value: 3 }]); // last dimension is the key, duplicates add, zeros drop
+assert.equal(label("country", "IN"), "India"); assert.equal(label("gender", "F"), "Female"); assert.equal(label("format", "REELS"), "Reels"); assert.equal(label("country", "Narnia"), "Narnia");
 
-// ---- content + audience ----
-const post = normalizeContent("post", { postId: "p1", url: "https://ig/p1", imageUrl: "i.jpg", content: "hi", publishedAt: { dateTime: "2026-11-05T10:00:00" }, likes: 5, comments: 2, reach: 100, impressions: 7, impressionsTotal: 120, engagement: 3.5, saved: 1 });
-assert.equal(post.stats.impressions, 120); assert.equal(post.at, "2026-11-05T10:00:00"); assert.equal(post.stats.likes, 5);
-const story = normalizeContent("story", { postId: "s1", permalink: "https://ig/s1", thumbnailUrl: "t.jpg", reach: 50, replies: 3, exits: 9, impressions: 60 });
-assert.equal(story.url, "https://ig/s1"); assert.equal(story.img, "t.jpg"); assert.equal(story.stats.replies, 3);
+const post = normalizeMedia({ id: "p1", permalink: "https://ig/p1", media_url: "m.jpg", caption: "hi", timestamp: "2026-11-05T10:00:00+0000", media_product_type: "FEED", like_count: 5, comments_count: 2, insights: { data: [{ name: "reach", values: [{ value: 100 }] }, { name: "views", values: [{ value: 150 }] }, { name: "total_interactions", values: [{ value: 9 }] }] } });
+assert.deepEqual([post.kind, post.stats.likes, post.stats.reach, post.stats.views, post.stats.interactions, post.img], ["post", 5, 100, 150, 9, "m.jpg"]);
+const reel = normalizeMedia({ id: "r1", media_product_type: "REELS", thumbnail_url: "t.jpg", media_url: "m.mp4" });
+assert.equal(reel.kind, "reel"); assert.equal(reel.img, "t.jpg"); assert.deepEqual(reel.stats, {}); // thumbnail wins over the video file; no insights = no stats
+const story = normalizeStory({ id: "s1", permalink: "https://ig/s1", thumbnail_url: "t.jpg", insights: { data: [{ name: "replies", total_value: { value: 3 } }, { name: "reach", total_value: { value: 50 } }] } });
+assert.deepEqual([story.kind, story.stats.replies, story.stats.reach], ["story", 3, 50]);
 assert.deepEqual(topBy([post, { ...post, id: "p2", stats: { reach: 500 } }], "reach", 1).map((c) => c.id), ["p2"]);
-assert.deepEqual(toDist({ "18-24": 10, "25-34": 30, junk: "x", zero: 0 }), [{ key: "25-34", value: 30 }, { key: "18-24", value: 10 }]);
-assert.deepEqual(toDist({ data: [{ key: "IN", value: 5 }] }), [{ key: "IN", value: 5 }]);
-assert.deepEqual(toDist(null), []);
 
-// ---- csv: formulas are defanged, quotes escaped, negatives stay numbers ----
-assert.equal(toCsv([["@a", "s", "=SUM(1)", "", "m, x", -5]]).split("\r\n")[1], `@a,s,'=SUM(1),,"m, x",-5`.replace("@a", "'@a"));
+// ---- period maths ----
+assert.equal(pctChange(150, 100), 50); assert.equal(pctChange(50, 100), -50); assert.equal(pctChange(5, 0), null); assert.equal(pctChange(undefined, 5), null);
+const c2 = combineWindows([{ reach: 100, views: 10 }, { reach: 300, views: 30 }]);
+assert.deepEqual(c2.values, { reach: 200, views: 40 }); // reach is distinct accounts: averaged, views added
+assert.equal(c2.windows, 2);
+assert.deepEqual(combineWindows([{ views: 5 }]).values, { views: 5 }); // a metric missing everywhere stays missing
 
-// ---- the whole flow against a stand-in Metricool that answers in the documented shapes ----
-const seen: string[] = [];
+// ---- csv ----
+assert.equal(toCsv([["a", "s", "=SUM(1)", "", "m, x", -5]]).split("\r\n")[1], `a,s,'=SUM(1),,"m, x",-5`);
+
+// ---- the whole flow against a stand-in Graph API that answers in the documented shapes ----
+const calls: string[] = [];
 const srv = createServer((req, res) => {
-  const u = new URL(req.url!, "http://x"), q = u.searchParams;
-  seen.push(`${u.pathname}?${[...q].filter(([k]) => k !== "userId").map(([k, v]) => `${k}=${v}`).join("&")}`);
-  if (req.headers["x-mc-auth"] !== "tok" || q.get("userId") !== "5" || q.get("blogId") !== "42") { res.writeHead(401).end(); return; }
-  const send = (o: unknown) => res.setHeader("content-type", "application/json").end(JSON.stringify(o));
-  if (u.pathname === "/api/v2/analytics/timelines") {
-    if (q.get("metric") === "followers") { res.writeHead(500).end(); return; } // one failing metric must not break the rest
-    const out = []; for (let d = q.get("from")!.slice(0, 10); d <= q.get("to")!.slice(0, 10); d = addDays(d, 1)) out.push({ dateTime: `${d}T00:00:00`, value: d >= "2026-11-11" ? 20 : 10 });
-    return send({ data: [{ metric: q.get("metric"), values: out }] });
+  const u = new URL(req.url!, "http://x"), q = u.searchParams, path = u.pathname.replace(/^\/v27\.0/, "");
+  calls.push(`${path}?${[...q].map(([k, v]) => `${k}=${v}`).join("&")}`);
+  const j = (o: unknown, code = 200) => res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(o));
+  if (req.headers.authorization !== "Bearer TOK") return j({ error: { message: "Invalid OAuth access token." } }, 401);
+  if (path === "/17841") return j({ username: "acme", followers_count: 1234, follows_count: 10, media_count: 55 });
+  if (path === "/17841/media") return j({ data: [{ id: "m1", media_product_type: "FEED", permalink: "u1", like_count: 3, insights: { data: [{ name: "reach", values: [{ value: 10 }] }, { name: "total_interactions", values: [{ value: 5 }] }] } }, { id: "m2", media_product_type: "REELS", permalink: "u2", like_count: 9, insights: { data: [{ name: "reach", values: [{ value: 90 }] }, { name: "total_interactions", values: [{ value: 50 }] }] } }] });
+  if (path === "/17841/stories") return j({ data: [] });
+  if (path === "/17841/insights") {
+    const metrics = (q.get("metric") ?? "").split(",");
+    if (metrics[0] === "follower_demographics") return q.get("breakdown") === "city" ? j({ error: { message: "city is broken" } }, 500) : j({ data: [{ name: "follower_demographics", total_value: { breakdowns: [{ dimension_keys: ["timeframe", q.get("breakdown")], results: [{ dimension_values: ["THIS_MONTH", q.get("breakdown") === "gender" ? "F" : q.get("breakdown") === "country" ? "IN" : "25-34"], value: 60 }] }] } }] });
+    if (q.get("breakdown") === "media_product_type") return j({ data: metrics.map((name) => ({ name, total_value: { value: 100, breakdowns: [{ dimension_keys: ["media_product_type"], results: [{ dimension_values: ["POST"], value: 40 }, { dimension_values: ["REEL"], value: 60 }] }] } })) });
+    if (metrics.includes("reposts")) return j({ error: { message: "An unknown error has occurred." } }, 400); // the combined call is rejected, and so is `reposts` alone
+    const span = (Number(q.get("until")) - Number(q.get("since")) + 1) / 86400;
+    return j({ data: metrics.map((name) => ({ name, period: "day", total_value: { value: span * 10 } })) });
   }
-  if (u.pathname.endsWith("/posts/instagram")) return send({ data: [{ postId: "a", url: "u1", reach: 10, engagement: 1 }, { postId: "b", url: "u2", reach: 90, engagement: 9 }] });
-  if (u.pathname.endsWith("/reels/instagram")) return send({ data: [{ reelId: "r", url: "u3", views: 5 }] });
-  if (u.pathname.endsWith("/stories/instagram")) return send({ data: [] });
-  if (u.pathname === "/api/stats/gender/instagram") return send({ F: 70, M: 30 });
-  if (u.pathname === "/api/stats/age/instagram") return send({ "18-24": 1 });
-  res.writeHead(404).end();
+  j({ error: { message: "not found" } }, 404);
 });
 await new Promise<void>((ok) => srv.listen(0, ok));
-process.env.METRICOOL_BASE = `http://127.0.0.1:${(srv.address() as { port: number }).port}/api`;
+process.env.META_GRAPH_BASE = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
 
-const range = { from: "2026-11-11", to: "2026-11-20" };
-const rep = await buildReport({ userId: "5", token: "tok" }, 42, range);
-const m = (k: string) => METRICS.find((x) => x.key === k)!;
-const s = rep.series.p_impr; assert.ok(s.ok);
-assert.equal(periodValue(s.data, rep.range, m("p_impr").kind), 200); // 10 days x 20
-assert.equal(periodValue(s.data, rep.prev, m("p_impr").kind), 100); // previous 10 days x 10
-assert.equal(pctChange(200, 100), 100);
-assert.ok(!rep.series.followers.ok && /answered 500/.test((rep.series.followers as { error: string }).error)); // isolated failure
-assert.ok(rep.series.net.ok && rep.series.r_views.ok);
-assert.ok(rep.content.posts.ok && topBy(rep.content.posts.data, "reach", 1)[0].id === "b");
-assert.ok(rep.content.stories.ok && rep.content.stories.data.length === 0);
-assert.ok(rep.audience.gender.ok && rep.audience.gender.data[0].key === "F");
-assert.ok(!rep.audience.country.ok); // 404 shows as a section error, not a crash
-assert.ok(seen.some((x) => x.includes("subject=posts&metric=impressions")) && seen.some((x) => x.includes("from=2026-11-01T00:00:00&to=2026-11-20T23:59:59"))); // previous+current window in one call
+// one unsupported metric must not hide the others: the combined call fails, the fallback gets every metric but that one
+const one = await getTotals("TOK", "17841", { from: "2026-11-01", to: "2026-11-01" });
+assert.equal(one.views, 10); assert.equal(one.reposts, undefined); assert.equal(Object.keys(one).length, TOTALS.length - 1);
+// a systemic error (bad token) stops after the first failed fallback call instead of repeating it 11 times
+calls.length = 0;
+await assert.rejects(() => getTotals("WRONG", "17841", { from: "2026-11-01", to: "2026-11-01" }), /Invalid OAuth/);
+assert.equal(calls.length, 2); // the combined call, then one fallback call that failed the same way: it stops there
+
+// a full report over 45 days: sections fill in, long ranges are split into 30-day windows, and one failing section shows its own error
+calls.length = 0;
+const range = { from: "2026-10-10", to: "2026-11-23" }; // 45 days
+const rep = await buildReport("TOK", "17841", range);
+assert.ok(rep.account.ok && rep.account.data.followers === 1234 && rep.account.data.username === "acme");
+assert.ok(rep.totals.ok);
+if (rep.totals.ok) {
+  assert.equal(rep.totals.data.windows, 2);
+  assert.equal(rep.totals.data.cur.views, 450); // views are added: (30 + 15 days) x 10
+  assert.equal(rep.totals.data.cur.reach, (300 + 150) / 2); // reach is distinct accounts: averaged across the two windows
+  assert.equal(rep.totals.data.prev.views, 450); // the 45 days before
+  assert.equal(rep.totals.data.cur.reposts, undefined);
+}
+assert.ok(rep.split.ok && rep.split.data.views[0].key === "REEL");
+assert.ok(rep.media.ok && rep.media.data.length === 2 && rep.media.data[1].kind === "reel" && rep.media.data[1].stats.views === undefined);
+assert.ok(rep.audience.gender.ok && rep.audience.gender.data[0].key === "Female");
+assert.ok(rep.audience.country.ok && rep.audience.country.data[0].key === "India");
+assert.ok(rep.audience.age.ok && rep.audience.age.data[0].key === "25-34");
+assert.ok(!rep.audience.city.ok && /city is broken/.test((rep.audience.city as { error: string }).error)); // isolated failure
+assert.ok(calls.some((c) => c.includes("/17841/media?") && c.includes("since=") && c.includes("limit=50")));
+assert.ok(calls.some((c) => c.includes("timeframe=this_month") && c.includes("breakdown=gender")));
+assert.ok(!calls.some((c) => /access_token/.test(c))); // the token goes in a header, never in a URL
+
+// a wrong token turns the sections into readable errors, not a crash
+const bad = await buildReport("WRONG", "17841", range);
+assert.ok(!bad.totals.ok && /Invalid OAuth/.test((bad.totals as { error: string }).error) && !bad.account.ok && !bad.media.ok);
+
+// csv rows carry the summary, format split, content and audience
 const csv = toCsv(reportRows("acme", rep));
-assert.ok(csv.includes("acme,summary,Posts,,Impressions (total),200") && csv.includes("acme,audience,gender,,F,70") && csv.includes("acme,daily,Posts,2026-11-11,Impressions,20"));
-
-// a wrong token turns every section into a readable error
-const bad = await buildReport({ userId: "5", token: "nope" }, 42, range);
-assert.ok(!bad.series.p_impr.ok && /refused/.test((bad.series.p_impr as { error: string }).error));
+assert.ok(csv.includes("acme,summary,,,Views,450") && csv.includes("acme,summary,,,Accounts reached (average per 30 days),225"));
+assert.ok(!csv.includes(",daily,")); // no daily history without the daily job
+assert.ok(csv.includes("acme,by format,Reels,,views,60") && csv.includes("acme,audience,gender,,Female,60") && csv.includes("acme,content reel,u2,,reach,90"));
 srv.close();
 console.log("igreport ok");

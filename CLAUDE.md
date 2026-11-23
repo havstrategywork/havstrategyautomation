@@ -97,7 +97,7 @@ Never lower `minScore` or drop the niche to make the numbers look better. Never 
 Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min). The app stores the thread; Chrome only reads and types.
 
 **Each run:**
-1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (`?limit=50`, live conversations first, then whoever was read longest ago; each call rotates to the next batch, so repeat it until a creator comes back or 60 chats are checked: every creator who wrote gets answered in the run).
+1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (`?limit=15`, once per run; live conversations first, then whoever was read longest ago; each call rotates to the next batch, so the hourly runs cover everyone over time).
    **Never search or scroll the inbox**: it is shared with other clients and shows display names, so you would match the wrong person. Open each entry's `igUrl`
    (their profile) and click Message: that opens exactly their chat. Check the header is the same profile; if you can't confirm it, skip that creator. Never read, open,
    or reply to anyone not on this list (private messages, friends, other business). Not finding a chat is never a reason to pause: pause is only for Instagram restrictions.
@@ -156,7 +156,7 @@ Test mode (`IG_ALLOWLIST`) applies to replies too: the server refuses anyone not
    searches + hunts, posts a shortlist. Never queues or sends DMs.
 3. **Approval** (automatic): when the shortlist is posted and the client has a saved `dmTemplate`, the server queues the first DM for every shortlisted creator right then (the user's own saved message, word for word; caps, allowlist and the one-DM-per-creator rule still apply). With no saved message (or `AUTO_APPROVE=off`) a human approves on the Campaigns page, ticking creators and editing the message/follow-up.
 4. **outreach run** (Cowork, hourly; kind `outreach`, merges the old send+replies runs into one Instagram session): first logs replies, answers and
-   negotiates within `tierRates`, escalates; THEN delivers first DMs and due follow-ups (15 per run, 75/day). Replies run first so a follow-up never
+   negotiates within `tierRates`, escalates; THEN delivers first DMs and due follow-ups (10 per run, one batch only, 75/day). Replies run first so a follow-up never
    fires on a creator who just replied.
 5a. **Client review**: the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
    native Google Sheet shared with the service account as Editor). When the client has that link, agreed deals are pushed into it automatically (5b): a NEW
@@ -198,14 +198,19 @@ Dashboard logins have a `role` (`lib/roles.ts`): `admin` (everything; a user wit
 The email agent (Hostinger webmail, its own scheduled prompt) reports with `POST /api/mail/threads` (Bearer): `{threads:[{mailbox:"info"|"editorial", email, subject, status, name?, category?, price?, note?, url?, followUpSent?}], run?:{ok,note}}`.
 Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The full email-agent prompt (with the report step) is on the Automation page ("4. Email agent").
 
-## Social-media dashboard (in progress, built step by step)
-Role `social` = the SM team (`/social/*`, no org management; `/social/orgs` is admin-only). Every SM user sees every org. Orgs = one Metricool account each (`orgs`, token encrypted via `lib/secrets.ts`
-with `SECRETS_KEY`, falling back to `API_KEY`); their Instagram accounts are imported from Metricool brands (`socialAccounts`, via `lib/metricool.ts`, `GET /admin/simpleProfiles`).
-Metricool needs an Advanced/Custom plan (not available yet); its OpenAPI is at https://app.metricool.com/api/swagger.json. Reports show selected accounts side by side (Step 2).
-Chat bot builder (Step 3): rule/flow builder with trigger, message and question nodes; buttons, images, links, carousels; official Meta Instagram Messaging API, dev mode first; no conversation log.
-Reports (Step 2, `/social/reports`): per-account columns from Metricool v2 analytics (`lib/igreport.ts`): daily timelines for the previous + current period in one call, posts/reels/stories lists, audience (`/stats/{gender,age,country,city}/instagram`, current state, no dates).
-Date range (7/30/90 or custom), CSV export (`/social/reports/export`), PDF = browser print. Each section fails on its own with Metricool's message. Demographic endpoint params are undocumented in the Swagger: verify with a real token.
+## Social-media dashboard
+Role `social` = the SM team (`/social/*`; `/social/orgs` and `/social/connect` are admin-only). Every SM user sees every org. An org = one client; its Instagram accounts are Meta connections (`botConnections`, token encrypted via `lib/secrets.ts`
+with `SECRETS_KEY`, falling back to `API_KEY`) made by an admin through Meta "Unified Login" (Organizations > Connect Instagram). The same connection powers Reports and Chat bots.
+Reports (`/social/reports`) read Meta's Instagram Insights API live (`lib/igreport.ts`; needs the `instagram_business_manage_insights` permission in the login configuration (Meta's current name for it; older apps may show `instagram_manage_insights`), Advanced Access for client accounts). Four sections per account, side by side: summary numbers with change vs the previous period, views/reach/interactions by format, top posts and reels, audience (gender/age/country/city).
+Date range 7/30/90 or custom (max 90 days; Meta requests are split into 30-day windows, distinct-account metrics are averaged across windows), CSV export, PDF = browser print. Each section fails on its own with Meta's message.
+NOT built (needs a daily job that saves snapshots; Meta gives totals only and keeps ~90 days): daily charts, follower growth over time, story history. The earlier version with `lib/igstore.ts`, `/api/meta/snapshot` and a line chart is in git history (commits fafd807, 7b45631).
+Metricool was replaced by this (no subscription needed). Old `orgs.metricool` / `socialAccounts` data in Mongo is unused and can be dropped.
 Chat bots (Step 3, `/social/bots`): rule/flow builder with a drag-and-drop canvas (`components/FlowEditor.tsx`); nodes = trigger (keywords, empty = every message), message (text/image/buttons/carousel), question (saves `{{var}}`, quick answers).
 Pure engine in `lib/botflow.ts` (validation = Meta's limits, payload shapes, matching), runtime in `lib/bot.ts` (session row only while a question waits; no message log), Meta client `lib/meta.ts`.
 Connecting accounts is admin-only (Organizations > Connect Instagram = Meta Unified Login, callback `/api/meta/callback`, webhook `/api/meta/webhook` signature-checked). The OAuth callback lives under /api because the session cookie is SameSite=Strict.
 `scripts/test-connection.mjs "<org>"` adds a fake (test:true) connection so the builder can be tried without Meta. Untested against real Meta (no app yet): token expiry/refresh, webhook subscription call, App Review.
+
+## Dropdowns and calendars (Material UI)
+Every dropdown and date picker uses Material UI (`@mui/material` 9, `@mui/x-date-pickers` 9 + dayjs), wrapped in `components/mui/`: `Select` (submits `name` like a native select; controlled via `value`/`onChange`, `compact`, per-option `disabled`), `DateField` (shows DD/MM/YYYY, submits `YYYY-MM-DD` through a hidden input, empty = no date) and `DateRange` (linked From/To). Never use a native `<select>` or `<input type="date">`.
+The theme (`components/mui/Providers.tsx`) reuses the app's CSS variables and the `data-theme` light/dark switch (`themeScript` always sets `data-theme`; MUI reads the same `theme` localStorage key).
+The global element styles for `input/select/textarea/button` in `globals.css` skip anything inside `.mui-scope` and MUI's popups (`.MuiPopper-root` etc.), so they don't leak into MUI's own elements.

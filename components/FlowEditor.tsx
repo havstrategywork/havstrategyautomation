@@ -2,6 +2,7 @@
 // Drag-and-drop flow canvas: steps are boxes you drag by their header; drag from a round dot on the right of a row to another box to connect them.
 // No graph library: positions of the dots are measured from the DOM and the lines are SVG curves. Everything the editor sends is re-validated on the server.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import Select from "@/components/mui/Select";
 import { LIM, newId, portsOf, type Btn, type BotEdge, type BotNode, type Card, type Flow, type MessageData, type QuestionData, type TriggerData } from "@/lib/botflow";
 
 type Save = (id: string, flow: Flow) => Promise<{ ok: boolean; errors: string[] }>;
@@ -178,11 +179,7 @@ function MessagePanel({ data, set }: { data: MessageData; set: (d: MessageData) 
   return (
     <div className="form">
       <h3 style={{ margin: 0 }}>Message</h3>
-      <label>Type
-        <select value={data.kind} onChange={(e) => set({ ...data, kind: e.target.value as MessageData["kind"] })}>
-          <option value="text">Text</option><option value="image">Image</option><option value="buttons">Text with buttons</option><option value="carousel">Carousel (cards)</option>
-        </select>
-      </label>
+      <Select label="Type" value={data.kind} onChange={(v) => set({ ...data, kind: v as MessageData["kind"] })} options={[{ value: "text", label: "Text" }, { value: "image", label: "Image" }, { value: "buttons", label: "Text with buttons" }, { value: "carousel", label: "Carousel (cards)" }]} />
       {data.kind !== "carousel" && (
         <label><span className="row spread"><span>{data.kind === "image" ? "Text sent before the image (optional)" : "Message"}</span><Count v={data.text} max={data.kind === "buttons" ? LIM.buttonText : LIM.text} /></span>
           <textarea rows={4} value={data.text ?? ""} onChange={(e) => set({ ...data, text: e.target.value })} />

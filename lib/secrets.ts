@@ -1,4 +1,4 @@
-// Encrypts third-party tokens (Metricool, later Meta) before they go into Mongo, so a database leak alone does not expose them.
+// Encrypts third-party tokens (Meta access tokens) before they go into Mongo, so a database leak alone does not expose them.
 // AES-256-GCM; the key comes from SECRETS_KEY (falls back to API_KEY). Changing that key makes saved tokens unreadable: re-enter them.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 

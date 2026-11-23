@@ -1,6 +1,7 @@
-// Instagram report for one Metricool brand: daily metric series (current + previous period), top content, audience.
-// Every section is fetched independently, so one failing call shows its own error instead of blanking the report.
-import { mc, MetricoolError, type Creds } from "./metricool.ts";
+// Instagram report for one connected account, read straight from Meta's Instagram Insights API (the data Meta Business Suite shows).
+// Meta returns TOTALS for a period (not a value per day): totals + format split + audience + top content, all read live. Daily charts, follower history and
+// story history would need a daily job that saves snapshots (not built; see git history). Every section is fetched independently, so one failing call shows its own error.
+import { graphGet, MetaError } from "./meta.ts";
 
 export type Range = { from: string; to: string }; // YYYY-MM-DD, both days included
 export type Pt = { t: string; v: number };
@@ -8,32 +9,22 @@ export type Sec<T> = { ok: true; data: T } | { ok: false; error: string };
 export type Dist = { key: string; value: number };
 export type Content = { id: string; kind: "post" | "reel" | "story"; url?: string; img?: string; text?: string; at?: string; stats: Record<string, number> };
 
-// kind: how a day-by-day series becomes one number for the period. sum = additive counts; avg = daily average (reach is unique people per day, engagement is a %); last = latest value.
-export type Metric = { key: string; label: string; group: "Growth" | "Posts" | "Reels"; subject: "account" | "posts" | "reels"; metric: string; kind: "sum" | "avg" | "last"; unit?: "%" };
-export const METRICS: Metric[] = [
-  { key: "followers", label: "Followers", group: "Growth", subject: "account", metric: "followers", kind: "last" },
-  { key: "gained", label: "Followers gained", group: "Growth", subject: "account", metric: "followers_gained", kind: "sum" },
-  { key: "lost", label: "Followers lost", group: "Growth", subject: "account", metric: "followers_lost", kind: "sum" },
-  { key: "net", label: "Net followers", group: "Growth", subject: "account", metric: "delta_followers", kind: "sum" },
-  { key: "clicks", label: "Profile link clicks", group: "Growth", subject: "account", metric: "clicks_total", kind: "sum" },
-  { key: "p_reach", label: "Avg daily reach", group: "Posts", subject: "posts", metric: "reach", kind: "avg" },
-  { key: "p_impr", label: "Impressions", group: "Posts", subject: "posts", metric: "impressions", kind: "sum" },
-  { key: "p_eng", label: "Engagement", group: "Posts", subject: "posts", metric: "engagement", kind: "avg", unit: "%" },
-  { key: "p_inter", label: "Interactions", group: "Posts", subject: "posts", metric: "interactions", kind: "sum" },
-  { key: "p_likes", label: "Likes", group: "Posts", subject: "posts", metric: "likes", kind: "sum" },
-  { key: "p_comm", label: "Comments", group: "Posts", subject: "posts", metric: "comments", kind: "sum" },
-  { key: "p_saves", label: "Saves", group: "Posts", subject: "posts", metric: "saves", kind: "sum" },
-  { key: "p_shares", label: "Shares", group: "Posts", subject: "posts", metric: "shares", kind: "sum" },
-  { key: "r_views", label: "Video views", group: "Reels", subject: "reels", metric: "videoviews", kind: "sum" },
-  { key: "r_reach", label: "Avg daily reach", group: "Reels", subject: "reels", metric: "reach", kind: "avg" },
-  { key: "r_impr", label: "Impressions", group: "Reels", subject: "reels", metric: "impressions", kind: "sum" },
-  { key: "r_eng", label: "Engagement", group: "Reels", subject: "reels", metric: "engagement", kind: "avg", unit: "%" },
-  { key: "r_inter", label: "Interactions", group: "Reels", subject: "reels", metric: "interactions", kind: "sum" },
-  { key: "r_likes", label: "Likes", group: "Reels", subject: "reels", metric: "likes", kind: "sum" },
-  { key: "r_comm", label: "Comments", group: "Reels", subject: "reels", metric: "comments", kind: "sum" },
-  { key: "r_shares", label: "Shares", group: "Reels", subject: "reels", metric: "shares", kind: "sum" },
-  { key: "r_saved", label: "Saves", group: "Reels", subject: "reels", metric: "saved", kind: "sum" },
+// "unique" metrics count distinct accounts, so they can't be added across separate windows; "sum" metrics can.
+export type TotalMetric = { key: string; label: string; kind: "sum" | "unique" };
+export const TOTALS: TotalMetric[] = [
+  { key: "reach", label: "Accounts reached", kind: "unique" },
+  { key: "views", label: "Views", kind: "sum" },
+  { key: "accounts_engaged", label: "Accounts engaged", kind: "unique" },
+  { key: "total_interactions", label: "Interactions", kind: "sum" },
+  { key: "likes", label: "Likes", kind: "sum" },
+  { key: "comments", label: "Comments", kind: "sum" },
+  { key: "saves", label: "Saves", kind: "sum" },
+  { key: "shares", label: "Shares", kind: "sum" },
+  { key: "replies", label: "Story replies", kind: "sum" },
+  { key: "reposts", label: "Reposts", kind: "sum" },
+  { key: "profile_links_taps", label: "Profile link taps", kind: "sum" },
 ];
+export const SPLIT_METRICS = ["views", "reach", "total_interactions"]; // support the media_product_type breakdown
 
 // ---- dates (plain YYYY-MM-DD strings; UTC maths so a timezone never shifts a day) ----
 const DAY = 864e5, ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,15 +33,23 @@ export const addDays = (d: string, n: number) => new Date(ms(d) + n * DAY).toISO
 export const days = (r: Range) => Math.round((ms(r.to) - ms(r.from)) / DAY) + 1;
 export const prevRange = (r: Range): Range => ({ from: addDays(r.from, -days(r)), to: addDays(r.from, -1) });
 export const todayIn = (tz = "Asia/Kolkata") => new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+/** Unix seconds for the start (or the very last second) of a day. */
+export const unix = (d: string, end = false) => Math.floor((ms(d) + (end ? DAY : 0)) / 1000) - (end ? 1 : 0);
+/** Splits a range into windows of at most `size` days (Meta limits how long one insights request may span). */
+export function windows(r: Range, size = 30): Range[] {
+  const out: Range[] = [];
+  for (let from = r.from; from <= r.to; from = addDays(from, size)) out.push({ from, to: addDays(from, size - 1) < r.to ? addDays(from, size - 1) : r.to });
+  return out;
+}
 
-/** ?range=7|30|90 or custom ?from=&to=. Anything invalid falls back to the last 30 days; a custom range is capped at 366 days and can't end in the future. */
+/** ?range=7|30|90 or custom ?from=&to=. Anything invalid falls back to the last 30 days; a custom range is capped at 90 days (what Meta keeps) and can't end in the future. */
 export function parseRange(sp: { range?: string; from?: string; to?: string }, today: string): { range: Range; preset: string } {
   const n = Number(sp.range);
   if ([7, 30, 90].includes(n)) return { range: { from: addDays(today, -(n - 1)), to: today }, preset: String(n) };
   if (sp.from && sp.to && ISO.test(sp.from) && ISO.test(sp.to) && !Number.isNaN(ms(sp.from)) && !Number.isNaN(ms(sp.to))) {
     const to = sp.to > today ? today : sp.to;
     const from = sp.from > to ? to : sp.from;
-    return { range: { from: days({ from, to }) > 366 ? addDays(to, -365) : from, to }, preset: "custom" };
+    return { range: { from: days({ from, to }) > 90 ? addDays(to, -89) : from, to }, preset: "custom" };
   }
   return { range: { from: addDays(today, -29), to: today }, preset: "30" };
 }
@@ -59,81 +58,124 @@ export function parseRange(sp: { range?: string; from?: string; to?: string }, t
 type Json = Record<string, unknown>;
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : Number(x) || 0);
 const arr = (x: unknown): Json[] => (Array.isArray(x) ? (x as Json[]) : []);
-
-/** v2 timelines answer { data: [ { metric, values: [ { dateTime, value } ] } ] }. */
-export function parseSeries(resp: unknown): Pt[] {
-  const first = arr((resp as Json)?.data)[0];
-  return arr(first?.values).map((v) => ({ t: String(v.dateTime).slice(0, 10), v: num(v.value) })).filter((p) => ISO.test(p.t)).sort((a, b) => a.t.localeCompare(b.t));
-}
-
-/** One number for the days inside `r`, or null when the series has nothing there. */
-export function periodValue(pts: Pt[], r: Range, kind: Metric["kind"]): number | null {
-  const inside = pts.filter((p) => p.t >= r.from && p.t <= r.to);
-  if (!inside.length) return null;
-  if (kind === "last") return inside[inside.length - 1].v;
-  const sum = inside.reduce((a, p) => a + p.v, 0);
-  return kind === "sum" ? sum : sum / inside.length;
-}
-export const pctChange = (cur: number | null, prev: number | null) => (cur === null || prev === null || prev === 0 ? null : ((cur - prev) / Math.abs(prev)) * 100);
-
-const when = (x: unknown) => { const d = (x as Json)?.dateTime; return typeof d === "string" ? d : undefined; };
+const obj = (x: unknown): Json => (x && typeof x === "object" && !Array.isArray(x) ? (x as Json) : {});
 const str = (x: unknown) => (typeof x === "string" && x ? x : undefined);
-/** Posts, reels and stories use different field names in Metricool; this maps them to one shape. */
-export function normalizeContent(kind: Content["kind"], r: Json): Content {
-  const pick = (...k: string[]) => Object.fromEntries(k.flatMap((x) => (r[x] === undefined || r[x] === null ? [] : [[x, num(r[x])]])));
-  const stats = kind === "story"
-    ? { ...pick("reach", "replies", "exits", "tapsForward", "tapsBack"), impressions: num(r.impressionsTotal ?? r.impressions) }
-    : { ...pick("reach", "likes", "comments", "shares", "saved", "interactions", "engagement", "views"), impressions: num(r.impressionsTotal ?? r.impressions) };
-  return { id: String(r.reelId ?? r.postId ?? r.contentId ?? r.url ?? Math.random()), kind, url: str(r.url) ?? str(r.permalink), img: str(r.imageUrl) ?? str(r.thumbnailUrl) ?? str(r.mediaUrl), text: str(r.content), at: when(r.publishedAt), stats };
+
+/** { data: [ { name, total_value: { value } } ] } (or { values: [ { value } ] }) -> { name: value }. A metric Meta leaves out (no data) is simply absent, never 0. */
+export function parseTotals(resp: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const m of arr(obj(resp).data)) {
+    const v = obj(m.total_value).value ?? arr(m.values)[0]?.value;
+    if (typeof m.name === "string" && v !== undefined && v !== null) out[m.name] = num(v);
+  }
+  return out;
+}
+
+/** Breakdown answers: { data: [ { name, total_value: { breakdowns: [ { results: [ { dimension_values, value } ] } ] } } ] } -> { name: [ {key, value} ] }, biggest first.
+ *  The key is the LAST dimension value (Meta lists "timeframe" first for demographics). */
+export function parseBreakdown(resp: unknown): Record<string, Dist[]> {
+  const out: Record<string, Dist[]> = {};
+  for (const m of arr(obj(resp).data)) {
+    const acc = new Map<string, number>();
+    for (const r of arr(obj(arr(obj(m.total_value).breakdowns)[0]).results)) {
+      const dv = Array.isArray(r.dimension_values) ? (r.dimension_values as unknown[]) : [], key = String(dv[dv.length - 1] ?? "");
+      if (key) acc.set(key, (acc.get(key) ?? 0) + num(r.value));
+    }
+    if (typeof m.name === "string") out[m.name] = [...acc].map(([key, value]) => ({ key, value })).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  }
+  return out;
+}
+
+const GENDER: Record<string, string> = { F: "Female", M: "Male", U: "Unknown" }, PRODUCT: Record<string, string> = { POST: "Posts", CAROUSEL_CONTAINER: "Carousels", REEL: "Reels", REELS: "Reels", STORY: "Stories", AD: "Ads", FEED: "Feed" };
+const regions = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames("en", { type: "region" }) : undefined;
+export const label = (kind: "gender" | "country" | "format", key: string) => (kind === "gender" ? GENDER[key] : kind === "format" ? PRODUCT[key] : /^[A-Z]{2}$/.test(key) ? (() => { try { return regions?.of(key); } catch { return undefined; } })() : undefined) ?? key;
+
+const insightsOf = (r: Json): Record<string, number> => parseTotals(r.insights);
+const when = (x: unknown) => (typeof x === "string" ? x : undefined);
+
+/** A feed post or reel from GET /<IG_ID>/media with insights.metric(reach,views,shares,total_interactions) expanded. */
+export function normalizeMedia(r: Json): Content {
+  const i = insightsOf(r), reel = String(r.media_product_type ?? "").toUpperCase().startsWith("REEL");
+  return { id: String(r.id ?? r.permalink ?? Math.random()), kind: reel ? "reel" : "post", url: str(r.permalink), img: str(r.thumbnail_url) ?? str(r.media_url), text: str(r.caption), at: when(r.timestamp),
+    stats: { ...(r.like_count !== undefined && { likes: num(r.like_count) }), ...(r.comments_count !== undefined && { comments: num(r.comments_count) }), ...(i.reach !== undefined && { reach: i.reach }), ...(i.views !== undefined && { views: i.views }), ...(i.shares !== undefined && { shares: i.shares }), ...(i.total_interactions !== undefined && { interactions: i.total_interactions }) } };
+}
+export function normalizeStory(r: Json): Content {
+  const i = insightsOf(r);
+  return { id: String(r.id ?? r.permalink ?? Math.random()), kind: "story", url: str(r.permalink), img: str(r.thumbnail_url) ?? str(r.media_url), text: str(r.caption), at: when(r.timestamp),
+    stats: { ...(i.reach !== undefined && { reach: i.reach }), ...(i.views !== undefined && { views: i.views }), ...(i.shares !== undefined && { shares: i.shares }), ...(i.total_interactions !== undefined && { interactions: i.total_interactions }), ...(i.replies !== undefined && { replies: i.replies }) } };
 }
 export const topBy = (items: Content[], key: string, n = 6) => [...items].sort((a, b) => (b.stats[key] ?? 0) - (a.stats[key] ?? 0)).slice(0, n);
 
-/** Demographics come back as a { label: number } map (or a list of { key, value }); returns them biggest first. */
-export function toDist(raw: unknown): Dist[] {
-  const d = (raw as Json)?.data ?? raw;
-  const rows: Dist[] = Array.isArray(d) ? arr(d).map((x) => ({ key: String(x.key ?? x.label ?? x.name ?? ""), value: num(x.value) })) : d && typeof d === "object" ? Object.entries(d as Json).filter(([, v]) => typeof v === "number" || (typeof v === "string" && v !== "" && !Number.isNaN(Number(v)))).map(([key, v]) => ({ key, value: num(v) })) : [];
-  return rows.filter((x) => x.key && x.value > 0).sort((a, b) => b.value - a.value);
+// ---- period numbers ----
+export const pctChange = (cur: number | null | undefined, prev: number | null | undefined) => (cur == null || prev == null || prev === 0 ? null : ((cur - prev) / Math.abs(prev)) * 100);
+
+/** Adds up the windows of a long range. Distinct-account metrics (reach, accounts engaged) can't be added, so they become the average per window. */
+export function combineWindows(parts: Record<string, number>[]): { values: Record<string, number>; windows: number } {
+  const values: Record<string, number> = {};
+  for (const m of TOTALS) {
+    const have = parts.map((p) => p[m.key]).filter((v): v is number => v !== undefined);
+    if (have.length) values[m.key] = have.reduce((a, b) => a + b, 0) / (m.kind === "unique" ? have.length : 1);
+  }
+  return { values, windows: parts.length };
 }
 
-// ---- fetching ----
+// ---- fetching (every call carries the token in a header; see lib/meta.ts) ----
 const TTL = 5 * 60e3;
 const sec = async <T,>(f: () => Promise<T>): Promise<Sec<T>> => {
   try { return { ok: true, data: await f() }; }
-  catch (e) { return { ok: false, error: e instanceof MetricoolError ? e.message : "Unexpected answer from Metricool." }; }
+  catch (e) { return { ok: false, error: e instanceof MetaError ? e.message : "Unexpected answer from Meta." }; }
 };
+const win = (r: Range) => ({ since: String(unix(r.from)), until: String(unix(r.to, true)) });
+const insights = (id: string, token: string, params: Record<string, string>) => graphGet<unknown>(`/${id}/insights`, token, params, TTL);
 
+/** Totals for one window. All metrics in one call; if Meta rejects the combination, each metric on its own so one unsupported metric can't hide the rest. */
+export async function getTotals(token: string, igId: string, r: Range, metrics = TOTALS.map((m) => m.key)): Promise<Record<string, number>> {
+  const base = { period: "day", metric_type: "total_value", ...win(r) };
+  try { return parseTotals(await insights(igId, token, { ...base, metric: metrics.join(",") })); }
+  catch (first) {
+    if (!(first instanceof MetaError) || metrics.length === 1) throw first;
+    const out: Record<string, number> = {}; let attempt = 0;
+    for (const m of metrics) {
+      attempt++;
+      try { Object.assign(out, parseTotals(await insights(igId, token, { ...base, metric: m }))); }
+      catch (e) { if (attempt === 1 && e instanceof MetaError && e.message === first.message) throw first; } // the very first single metric failing the same way means it is systemic (token, permission): stop
+    }
+    if (!Object.keys(out).length) throw first;
+    return out;
+  }
+}
+const periodTotals = async (token: string, igId: string, r: Range) => combineWindows(await Promise.all(windows(r).map((w) => getTotals(token, igId, w))));
+
+export type Account = { username?: string; followers?: number; following?: number; media?: number };
 export type Report = {
   range: Range; prev: Range;
-  series: Record<string, Sec<Pt[]>>; // covers the previous period + the current one
-  content: { posts: Sec<Content[]>; reels: Sec<Content[]>; stories: Sec<Content[]> };
+  account: Sec<Account>;
+  totals: Sec<{ cur: Record<string, number>; prev: Record<string, number>; windows: number }>;
+  split: Sec<Record<string, Dist[]>>; // views / reach / interactions by format, for the last 30 days of the range
+  media: Sec<Content[]>;
   audience: { gender: Sec<Dist[]>; age: Sec<Dist[]>; country: Sec<Dist[]>; city: Sec<Dist[]> };
 };
 
-export async function buildReport(c: Creds, blogId: number, range: Range): Promise<Report> {
-  const prev = prevRange(range), iso = (d: string, end?: boolean) => `${d}T${end ? "23:59:59" : "00:00:00"}`;
-  const list = (path: string, kind: Content["kind"]) => sec(async () => arr(((await mc(c, path, { blogId, from: iso(range.from), to: iso(range.to, true) }, TTL)) as Json)?.data).map((r) => normalizeContent(kind, r)));
-  const dist = (what: string) => sec(async () => toDist(await mc(c, `/stats/${what}/instagram`, { blogId }, TTL))); // current audience, no date range
-  const keys = METRICS.map((m) => m.key);
-  const [series, posts, reels, stories, gender, age, country, city] = await Promise.all([
-    Promise.all(METRICS.map((m) => sec(async () => parseSeries(await mc(c, "/v2/analytics/timelines", { network: "instagram", subject: m.subject, metric: m.metric, blogId, from: iso(prev.from), to: iso(range.to, true) }, TTL))))),
-    list("/v2/analytics/posts/instagram", "post"), list("/v2/analytics/reels/instagram", "reel"), list("/v2/analytics/stories/instagram", "story"),
-    dist("gender"), dist("age"), dist("country"), dist("city"),
+export async function buildReport(token: string, igId: string, range: Range): Promise<Report> {
+  const prev = prevRange(range), last30 = windows(range).at(-1)!;
+  const demo = (breakdown: string, kind?: "gender" | "country") => sec(async () => (parseBreakdown(await insights(igId, token, { metric: "follower_demographics", period: "lifetime", metric_type: "total_value", timeframe: "this_month", breakdown }))["follower_demographics"] ?? []).map((d) => ({ ...d, key: kind ? label(kind, d.key) : d.key })));
+  const [account, totals, split, media, gender, age, country, city] = await Promise.all([
+    sec(async () => { const a = await graphGet<Json>(`/${igId}`, token, { fields: "username,followers_count,follows_count,media_count" }, TTL); return { username: str(a.username), followers: a.followers_count === undefined ? undefined : num(a.followers_count), following: a.follows_count === undefined ? undefined : num(a.follows_count), media: a.media_count === undefined ? undefined : num(a.media_count) }; }),
+    sec(async () => { const [cur, p] = await Promise.all([periodTotals(token, igId, range), periodTotals(token, igId, prev)]); return { cur: cur.values, prev: p.values, windows: cur.windows }; }),
+    sec(async () => parseBreakdown(await insights(igId, token, { metric: SPLIT_METRICS.join(","), period: "day", metric_type: "total_value", breakdown: "media_product_type", ...win(last30) }))),
+    sec(async () => arr(obj(await graphGet<unknown>(`/${igId}/media`, token, { fields: "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,insights.metric(reach,views,shares,total_interactions)", since: String(unix(range.from)), until: String(unix(range.to, true)), limit: "50" }, TTL)).data).map(normalizeMedia)),
+    demo("gender", "gender"), demo("age"), demo("country", "country"), demo("city"),
   ]);
-  return { range, prev, series: Object.fromEntries(keys.map((k, i) => [k, series[i]])), content: { posts, reels, stories }, audience: { gender, age, country, city } };
+  return { range, prev, account, totals, split, media, audience: { gender, age, country, city } };
 }
 
-/** The same report as flat rows (account, section, item, date, metric, value), for the CSV export. */
+/** The report as flat rows (account, section, item, date, metric, value) for the CSV export. */
 export function reportRows(account: string, r: Report): (string | number)[][] {
   const out: (string | number)[][] = [];
-  for (const m of METRICS) {
-    const s = r.series[m.key];
-    if (!s.ok) continue;
-    const cur = periodValue(s.data, r.range, m.kind), prev = periodValue(s.data, r.prev, m.kind);
-    out.push([account, "summary", m.group, "", `${m.label} (${m.kind === "avg" ? "daily average" : m.kind === "last" ? "latest" : "total"})`, cur ?? ""], [account, "summary", m.group, "", `${m.label} previous period`, prev ?? ""]);
-    for (const p of s.data) if (p.t >= r.range.from && p.t <= r.range.to) out.push([account, "daily", m.group, p.t, m.label, p.v]);
-  }
-  for (const [name, sec_] of Object.entries(r.content)) if (sec_.ok) for (const c of sec_.data) for (const [k, v] of Object.entries(c.stats)) out.push([account, `content ${name}`, c.url ?? c.id, c.at?.slice(0, 10) ?? "", k, v]);
-  for (const [name, sec_] of Object.entries(r.audience)) if (sec_.ok) for (const d of sec_.data) out.push([account, "audience", name, "", d.key, d.value]);
+  if (r.totals.ok) for (const m of TOTALS) { const c = r.totals.data.cur[m.key], p = r.totals.data.prev[m.key]; if (c !== undefined) out.push([account, "summary", "", "", `${m.label}${r.totals.data.windows > 1 && m.kind === "unique" ? " (average per 30 days)" : ""}`, c], [account, "summary", "", "", `${m.label} previous period`, p ?? ""]); }
+  if (r.split.ok) for (const [metric, rows] of Object.entries(r.split.data)) for (const d of rows) out.push([account, "by format", label("format", d.key), "", metric, d.value]);
+  for (const c of r.media.ok ? r.media.data : []) for (const [k, v] of Object.entries(c.stats)) out.push([account, `content ${c.kind}`, c.url ?? c.id, c.at?.slice(0, 10) ?? "", k, v]);
+  for (const [name, s] of Object.entries(r.audience)) if (s.ok) for (const d of s.data) out.push([account, "audience", name, "", d.key, d.value]);
   return out;
 }
 

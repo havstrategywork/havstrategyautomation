@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { STATUSES, tierOf } from "@/lib/fields";
 import { Avatar, Badge, ago } from "@/components/ui";
 
+import { DateField } from "@/components/mui/DateField";
+import Select from "@/components/mui/Select";
 export const dynamic = "force-dynamic";
 
 const day = (d?: Date | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
@@ -83,10 +85,10 @@ export default async function Creator({ params }: { params: Promise<{ id: string
           <div className="card form">
             <h3>Outreach &amp; deal</h3>
             <div className="f2">
-              <label>Status<select name="status" defaultValue={c.status ?? "New"}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></label>
-              <label>DM sent<input name="dmSentAt" type="date" defaultValue={day(c.dmSentAt)} /></label>
-              <label>Follow-up sent<input name="followUpSentAt" type="date" defaultValue={day(c.followUpSentAt)} /></label>
-              <label>Last checked<input name="lastChecked" type="date" defaultValue={day(c.lastChecked)} /></label>
+              <Select label="Status" name="status" defaultValue={c.status ?? "New"} options={[...STATUSES]} />
+              <DateField label="DM sent" name="dmSentAt" defaultValue={day(c.dmSentAt)} />
+              <DateField label="Follow-up sent" name="followUpSentAt" defaultValue={day(c.followUpSentAt)} />
+              <DateField label="Last checked" name="lastChecked" defaultValue={day(c.lastChecked)} />
               <label>Quoted rate (amount + currency)<input name="quotedRate" placeholder="10k INR" defaultValue={c.quotedRate} /></label>
               <label>Agreed rate (amount + currency)<input name="agreedRate" placeholder="10k INR" defaultValue={c.agreedRate} /></label>
             </div>
