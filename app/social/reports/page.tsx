@@ -1,34 +1,35 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { ObjectId } from "mongodb";
-import { db, type SocialAccount } from "@/lib/db";
-import { buildReport, METRICS, parseRange, pctChange, periodValue, topBy, todayIn, type Content, type Range, type Report, type Sec } from "@/lib/igreport";
-import type { Creds } from "@/lib/metricool";
+import { db, type BotConnection } from "@/lib/db";
+import { buildReport, followerSeries, label, liveStories, parseRange, pctChange, prevRange, seriesFrom, todayIn, topBy, TOTALS, type Content, type Range, type Report, type Sec } from "@/lib/igreport";
+import { dailyRows, storiesIn } from "@/lib/igstore";
 import { unseal } from "@/lib/secrets";
 import { currentUser } from "@/lib/session";
 import { Avatar, Icon, PageHead } from "@/components/ui";
 import { BarList, fmt, LineChart } from "@/components/charts";
 import PrintButton from "@/components/PrintButton";
+import { fillHistory } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const C1 = "var(--c1)", C2 = "var(--c2)";
 const sub = <T,>(s: Sec<T>): T | undefined => (s.ok ? s.data : undefined);
-const errorsOf = (r: Report) => [...new Set([...Object.values(r.series), r.content.posts, r.content.reels, r.content.stories, ...Object.values(r.audience)].flatMap((s) => (s.ok ? [] : [s.error])))];
+const errorsOf = (r: Report) => [...new Set([r.account, r.totals, r.split, r.media, ...Object.values(r.audience)].flatMap((s) => (s.ok ? [] : [s.error])))];
 
-function Kpi({ label, cur, prev, unit }: { label: string; cur: number | null; prev: number | null; unit?: string }) {
+function Kpi({ label, cur, prev }: { label: string; cur: number | null | undefined; prev: number | null | undefined }) {
   const d = pctChange(cur, prev);
   return (
-    <div className="kpi" title={prev === null ? undefined : `Previous period: ${fmt(prev, unit)}`}>
+    <div className="kpi" title={prev == null ? undefined : `Previous period: ${fmt(prev)}`}>
       <div className="kpi-label">{label}</div>
-      <div className="kpi-value">{fmt(cur, unit)}</div>
+      <div className="kpi-value">{fmt(cur ?? null)}</div>
       <div className="kpi-delta muted">{d === null ? "no comparison" : `${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(1)}% vs previous`}</div>
     </div>
   );
 }
 
 function Tile({ c }: { c: Content }) {
-  const s = c.stats, bits = [s.reach !== undefined && `reach ${fmt(s.reach)}`, s.views !== undefined && `views ${fmt(s.views)}`, s.likes !== undefined && `${fmt(s.likes)} likes`, s.comments !== undefined && `${fmt(s.comments)} comments`, s.saved !== undefined && `${fmt(s.saved)} saves`, s.shares !== undefined && `${fmt(s.shares)} shares`, s.replies !== undefined && `${fmt(s.replies)} replies`, s.engagement !== undefined && `eng ${s.engagement.toFixed(1)}%`].filter(Boolean);
+  const s = c.stats, bits = [s.reach !== undefined && `reach ${fmt(s.reach)}`, s.views !== undefined && `views ${fmt(s.views)}`, s.likes !== undefined && `${fmt(s.likes)} likes`, s.comments !== undefined && `${fmt(s.comments)} comments`, s.shares !== undefined && `${fmt(s.shares)} shares`, s.interactions !== undefined && `${fmt(s.interactions)} interactions`, s.replies !== undefined && `${fmt(s.replies)} replies`].filter(Boolean);
   return (
     <li className="tile">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -42,61 +43,62 @@ function Tile({ c }: { c: Content }) {
   );
 }
 
-async function AccountReport({ creds, a, range }: { creds: Creds; a: SocialAccount; range: Range }) {
-  const r = await buildReport(creds, a.blogId, range);
-  const m = (k: string) => METRICS.find((x) => x.key === k)!;
-  const cur = (k: string) => { const s = r.series[k]; return s.ok ? periodValue(s.data, r.range, m(k).kind) : null; };
-  const prev = (k: string) => { const s = r.series[k]; return s.ok ? periodValue(s.data, r.prev, m(k).kind) : null; };
-  const pts = (k: string) => (sub(r.series[k]) ?? []).filter((p) => p.t >= r.range.from && p.t <= r.range.to);
-  const kpi = (k: string, label?: string) => <Kpi key={k} label={label ?? m(k).label} cur={cur(k)} prev={prev(k)} unit={m(k).unit} />;
-  const errors = errorsOf(r);
-  const stories = sub(r.content.stories) ?? [], sum = (k: string) => stories.reduce((t, s) => t + (s.stats[k] ?? 0), 0);
+async function AccountReport({ conn, range, back }: { conn: BotConnection; range: Range; back: string }) {
+  const head = <div className="who"><Avatar name={conn.username ?? conn.igId} /><div className="two"><b>@{conn.username ?? conn.igId}</b><small>Instagram</small></div></div>;
+  if (conn.test) return <div className="card rep">{head}<p className="muted small" style={{ margin: ".8rem 0 0" }}>This is a test account (no Meta connection), so there is no real data to show.</p></div>;
+  let token: string;
+  try { token = unseal(conn.token); } catch { return <div className="card rep">{head}<div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--bad)" }}>The saved Meta token can no longer be read. An admin needs to reconnect this account.</div></div>; }
+
+  const prev = prevRange(range);
+  const [r, rows, saved, live] = await Promise.all([buildReport(token, conn.igId, range), dailyRows(conn.igId, { from: prev.from, to: range.to }), storiesIn(conn.igId, range), liveStories(token, conn.igId).catch(() => [] as Content[])]);
+  const stories: Content[] = [...live, ...saved.filter((s) => !live.some((l) => `${conn.igId}:${l.id}` === s._id)).map((s) => ({ id: s._id, kind: "story" as const, url: s.permalink, img: s.img, text: s.text, at: s.at.toISOString(), stats: s.stats }))];
+  const t = sub(r.totals), account = sub(r.account), media = sub(r.media) ?? [];
+  const errors = errorsOf(r), pts = (k: string) => seriesFrom(rows, k, range), fol = followerSeries(rows, range);
+  const haveDays = rows.filter((x) => x.date >= range.from && x.date <= range.to && x.m.reach !== undefined).length;
+  const net = fol.length > 1 ? fol[fol.length - 1].v - fol[0].v : null;
+  const aggregated = (t?.windows ?? 1) > 1;
 
   return (
     <div className="card rep">
-      <div className="who"><Avatar name={a.igHandle} /><div className="two"><b>@{a.igHandle}</b><small>{a.brand}</small></div></div>
+      <div className="who"><Avatar name={conn.username ?? conn.igId} /><div className="two"><b>@{account?.username ?? conn.username ?? conn.igId}</b><small>{account?.followers !== undefined ? `${fmt(account.followers)} followers` : "Instagram"}{account?.media !== undefined ? ` · ${fmt(account.media)} posts` : ""}</small></div></div>
       {errors.length > 0 && <div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--warn)" }}><b>Some numbers could not load:</b> {errors.slice(0, 3).join(" ")}</div>}
 
-      <h3>Growth</h3>
-      <div className="kpis">{[kpi("followers"), kpi("net", "Net followers"), kpi("gained"), kpi("lost"), kpi("clicks")]}</div>
-      <LineChart title="Followers gained and lost" lines={[{ name: "Gained", color: C1, pts: pts("gained") }, { name: "Lost", color: C2, pts: pts("lost") }]} />
-      <LineChart title="Net follower change" lines={[{ name: "Net", color: C1, pts: pts("net") }]} />
-      {pts("followers").length > 1 && <LineChart title="Followers" lines={[{ name: "Followers", color: C1, pts: pts("followers") }]} />}
+      <h3>Summary</h3>
+      <div className="kpis">
+        {account?.followers !== undefined && <div className="kpi"><div className="kpi-label">Followers</div><div className="kpi-value">{fmt(account.followers)}</div><div className="kpi-delta muted">{net === null ? "growth shows once history builds" : `${net >= 0 ? "▲" : "▼"} ${fmt(Math.abs(net))} in this period`}</div></div>}
+        {TOTALS.map((m) => <Kpi key={m.key} label={aggregated && m.kind === "unique" ? `${m.label} (avg per 30 days)` : m.label} cur={t?.cur[m.key]} prev={t?.prev[m.key]} />)}
+      </div>
 
-      <h3>Posts</h3>
-      <div className="kpis">{["p_reach", "p_impr", "p_eng", "p_inter", "p_likes", "p_comm", "p_saves", "p_shares"].map((k) => kpi(k))}</div>
-      <LineChart title="Reach (daily)" lines={[{ name: "Reach", color: C1, pts: pts("p_reach") }]} />
-      <LineChart title="Impressions (daily)" lines={[{ name: "Impressions", color: C1, pts: pts("p_impr") }]} />
-      <LineChart title="Engagement" unit="%" lines={[{ name: "Engagement", color: C1, pts: pts("p_eng") }]} />
-      <LineChart title="Interactions" lines={[{ name: "Likes", color: C1, pts: pts("p_likes") }, { name: "Comments", color: C2, pts: pts("p_comm") }]} />
-
-      <h3>Reels</h3>
-      <div className="kpis">{["r_views", "r_reach", "r_impr", "r_eng", "r_inter", "r_likes", "r_comm", "r_shares", "r_saved"].map((k) => kpi(k))}</div>
-      <LineChart title="Video views (daily)" lines={[{ name: "Views", color: C1, pts: pts("r_views") }]} />
-      <LineChart title="Reach (daily)" lines={[{ name: "Reach", color: C1, pts: pts("r_reach") }]} />
-      <LineChart title="Engagement" unit="%" lines={[{ name: "Engagement", color: C1, pts: pts("r_eng") }]} />
-
-      <h3>Stories</h3>
-      {r.content.stories.ok ? (
-        <div className="kpis">
-          <div className="kpi"><div className="kpi-label">Stories posted</div><div className="kpi-value">{stories.length}</div></div>
-          <div className="kpi"><div className="kpi-label">Reach (total)</div><div className="kpi-value">{fmt(sum("reach"))}</div></div>
-          <div className="kpi"><div className="kpi-label">Impressions</div><div className="kpi-value">{fmt(sum("impressions"))}</div></div>
-          <div className="kpi"><div className="kpi-label">Replies</div><div className="kpi-value">{fmt(sum("replies"))}</div></div>
-          <div className="kpi"><div className="kpi-label">Exits</div><div className="kpi-value">{fmt(sum("exits"))}</div></div>
+      <h3>Over time</h3>
+      {haveDays < 2 && (
+        <div className="notice noprint" style={{ margin: "0 0 .8rem", borderLeftColor: "var(--info)" }}>
+          Meta gives totals, not a value per day, so these charts are built from daily snapshots. A job saves one each day from now on; to see the last month straight away, build it now.
+          <form action={fillHistory} style={{ marginTop: ".5rem" }}><input type="hidden" name="conn" value={String(conn._id)} /><input type="hidden" name="back" value={back} /><button className="small-btn">Build history (last 28 days)</button></form>
         </div>
-      ) : <p className="muted small">Could not load stories.</p>}
+      )}
+      <LineChart title="Accounts reached" lines={[{ name: "Reach", color: C1, pts: pts("reach") }]} />
+      <LineChart title="Views" lines={[{ name: "Views", color: C1, pts: pts("views") }]} />
+      <LineChart title="Accounts engaged" lines={[{ name: "Engaged", color: C1, pts: pts("accounts_engaged") }]} />
+      <LineChart title="Interactions" lines={[{ name: "Interactions", color: C1, pts: pts("total_interactions") }]} />
+      <LineChart title="Likes and comments" lines={[{ name: "Likes", color: C1, pts: pts("likes") }, { name: "Comments", color: C2, pts: pts("comments") }]} />
+      <LineChart title="Saves and shares" lines={[{ name: "Saves", color: C1, pts: pts("saves") }, { name: "Shares", color: C2, pts: pts("shares") }]} />
+      <LineChart title="Followers" lines={[{ name: "Followers", color: C1, pts: fol }]} />
+
+      <h3>By format (last 30 days)</h3>
+      <div className="aud">
+        {(["views", "reach", "total_interactions"] as const).map((k) => <BarList key={k} title={k === "views" ? "Views" : k === "reach" ? "Reach" : "Interactions"} items={(sub(r.split)?.[k] ?? []).map((d) => ({ ...d, key: label("format", d.key) }))} />)}
+      </div>
 
       <h3>Top content</h3>
-      {([["Posts (by engagement)", r.content.posts, "engagement"], ["Reels (by views)", r.content.reels, "views"], ["Stories (by reach)", r.content.stories, "reach"]] as const).map(([label, s, key]) => (
-        <div key={label}>
-          <div className="small muted" style={{ margin: ".6rem 0 .3rem" }}>{label}</div>
-          {s.ok && s.data.length ? <ul className="tiles">{topBy(s.data, key).map((c) => <Tile key={c.id} c={c} />)}</ul> : <p className="muted small" style={{ margin: 0 }}>{s.ok ? "None in this period." : "Could not load."}</p>}
+      {([["Posts (by interactions)", media.filter((c) => c.kind === "post"), "interactions", r.media.ok], ["Reels (by views)", media.filter((c) => c.kind === "reel"), "views", r.media.ok], ["Stories (by reach)", stories, "reach", true]] as const).map(([name, items, key, ok]) => (
+        <div key={name}>
+          <div className="small muted" style={{ margin: ".6rem 0 .3rem" }}>{name}</div>
+          {items.length ? <ul className="tiles">{topBy([...items], key).map((c) => <Tile key={c.id} c={c} />)}</ul> : <p className="muted small" style={{ margin: 0 }}>{ok ? "None in this period." : "Could not load."}</p>}
         </div>
       ))}
 
       <h3>Audience</h3>
-      <p className="muted small" style={{ marginTop: 0 }}>The current audience, so the date range does not change it.</p>
+      <p className="muted small" style={{ marginTop: 0 }}>Followers, this month. Instagram only shares this from 100 followers.</p>
       <div className="aud">
         <BarList title="Gender" items={sub(r.audience.gender) ?? []} />
         <BarList title="Age" items={[...(sub(r.audience.age) ?? [])].sort((x, y) => x.key.localeCompare(y.key, undefined, { numeric: true }))} max={12} />
@@ -110,10 +112,7 @@ async function AccountReport({ creds, a, range }: { creds: Creds; a: SocialAccou
           <table>
             <thead><tr><th>Metric</th><th>This period</th><th>Previous</th><th>Change</th></tr></thead>
             <tbody>
-              {METRICS.map((x) => {
-                const c = cur(x.key), p = prev(x.key), d = pctChange(c, p);
-                return <tr key={x.key}><td>{x.group}: {x.label}<small className="muted"> ({x.kind === "avg" ? "daily avg" : x.kind === "last" ? "latest" : "total"})</small></td><td>{fmt(c, x.unit)}</td><td className="muted">{fmt(p, x.unit)}</td><td>{d === null ? "—" : `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`}</td></tr>;
-              })}
+              {TOTALS.map((m) => { const c = t?.cur[m.key], p = t?.prev[m.key], d = pctChange(c, p); return <tr key={m.key}><td>{m.label}</td><td>{fmt(c ?? null)}</td><td className="muted">{fmt(p ?? null)}</td><td>{d === null ? "—" : `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`}</td></tr>; })}
             </tbody>
           </table>
         </div>
@@ -122,28 +121,27 @@ async function AccountReport({ creds, a, range }: { creds: Creds; a: SocialAccou
   );
 }
 
-export default async function Reports({ searchParams }: { searchParams: Promise<{ org?: string; acc?: string | string[]; range?: string; from?: string; to?: string }> }) {
+export default async function Reports({ searchParams }: { searchParams: Promise<{ org?: string; acc?: string | string[]; range?: string; from?: string; to?: string; m?: string }> }) {
   const sp = await searchParams;
   const today = todayIn(), { range, preset } = parseRange(sp, today);
-  const { orgs, socialAccounts } = await db();
+  const { orgs, botConnections } = await db();
   const [list, me] = await Promise.all([orgs.find().sort({ name: 1 }).toArray(), currentUser()]);
   const org = list.find((o) => String(o._id) === sp.org) ?? list[0];
-  const accounts = org ? await socialAccounts.find({ orgId: org._id as ObjectId }).sort({ igHandle: 1 }).toArray() : [];
+  const accounts = org ? await botConnections.find({ orgId: org._id as ObjectId }).sort({ username: 1 }).toArray() : [];
   const picked = [sp.acc ?? []].flat();
   const chosen = picked.length && !picked.includes("all") ? accounts.filter((a) => picked.includes(String(a._id))) : accounts; // nothing picked (or "all") = every account
   const on = new Set(chosen.map((a) => String(a._id)));
-  let creds: Creds | null = null, credsError = "";
-  if (org?.metricool) { try { creds = { userId: org.metricool.userId, token: unseal(org.metricool.token) }; } catch { credsError = "The saved Metricool token can no longer be read. An admin needs to enter it again."; } }
-  else if (org) credsError = "This organization has no Metricool login yet.";
 
   const keep = (extra: Record<string, string> = {}) => new URLSearchParams({ range: preset, ...(preset === "custom" && { from: range.from, to: range.to }), ...extra });
-  const exportQs = new URLSearchParams({ org: String(org?._id ?? ""), from: range.from, to: range.to }); chosen.forEach((a) => exportQs.append("acc", String(a._id)));
+  const exportQs = new URLSearchParams({ org: String(org?._id ?? ""), from: range.from, to: range.to }); chosen.filter((a) => !a.test).forEach((a) => exportQs.append("acc", String(a._id)));
+  const back = `/social/reports?${keep({ org: String(org?._id ?? "") })}`;
 
   return (
     <>
-      <PageHead title="Reports" sub="Instagram performance from Metricool, one column per account.">
-        {chosen.length > 0 && creds && (<><a className="btn ghost" href={`/social/reports/export?${exportQs}`}>Export CSV</a><PrintButton /></>)}
+      <PageHead title="Reports" sub="Instagram performance straight from Meta, one column per account.">
+        {chosen.some((a) => !a.test) && (<><a className="btn ghost" href={`/social/reports/export?${exportQs}`}>Export CSV</a><PrintButton /></>)}
       </PageHead>
+      {sp.m && <div className="notice noprint" role="status">{sp.m}</div>}
 
       {!list.length ? (
         <div className="card empty">No organizations yet.{me?.role === "admin" && <> <Link href="/social/orgs">Add one</Link>.</>}</div>
@@ -164,14 +162,14 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
                 {accounts.map((a) => (
                   <label key={String(a._id)} className="row" style={{ gap: ".5rem", flexWrap: "nowrap", padding: ".4rem .7rem", border: "1px solid var(--border)", borderRadius: 10, cursor: "pointer", background: "var(--surface)" }}>
                     <input type="checkbox" name="acc" value={String(a._id)} defaultChecked={on.has(String(a._id))} style={{ width: "auto" }} />
-                    <Avatar name={a.igHandle} /><span className="two"><b>@{a.igHandle}</b><small>{a.brand}</small></span>
+                    <Avatar name={a.username ?? a.igId} /><span className="two"><b>@{a.username ?? a.igId}</b><small>{a.test ? "test account" : "Instagram"}</small></span>
                   </label>
                 ))}
               </div>
               <div className="f2" style={{ alignItems: "end" }}>
                 <label>Period
                   <select name="range" defaultValue={preset}>
-                    <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="custom">Custom range (dates below)</option>
+                    <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="custom">Custom range (dates below, up to 90 days)</option>
                   </select>
                 </label>
                 <label>From<input type="date" name="from" defaultValue={range.from} max={today} /></label>
@@ -180,22 +178,20 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
               <div className="row spread"><button>Show report</button><span className="small muted">{range.from} to {range.to}, compared with the same number of days before.</span></div>
             </form>
           ) : (
-            <div className="card empty">{org.name} has no Instagram accounts yet.{me?.role === "admin" ? <> Sync them on the <Link href="/social/orgs">Organizations</Link> page.</> : " Ask an admin to sync them."}</div>
+            <div className="card empty">{org.name} has no Instagram accounts connected yet.{me?.role === "admin" ? <> Connect them on the <Link href="/social/orgs">Organizations</Link> page.</> : " Ask an admin to connect them."}</div>
           )}
 
-          {credsError && accounts.length > 0 && <div className="notice" style={{ marginTop: "1rem", borderLeftColor: "var(--bad)" }}>{credsError}</div>}
-
-          {creds && chosen.length > 0 && (
+          {chosen.length > 0 && (
             <>
               <p className="small muted print-only" style={{ margin: "1rem 0 0" }}>{org.name} · {range.from} to {range.to}</p>
               <div className="rep-grid">
                 {chosen.map((a) => (
-                  <Suspense key={`${a._id}${range.from}${range.to}`} fallback={<div className="card"><div className="who"><Avatar name={a.igHandle} /><div className="two"><b>@{a.igHandle}</b><small>Loading from Metricool…</small></div></div></div>}>
-                    <AccountReport creds={creds} a={a} range={range} />
+                  <Suspense key={`${a._id}${range.from}${range.to}`} fallback={<div className="card"><div className="who"><Avatar name={a.username ?? a.igId} /><div className="two"><b>@{a.username ?? a.igId}</b><small>Loading from Meta…</small></div></div></div>}>
+                    <AccountReport conn={a} range={range} back={back} />
                   </Suspense>
                 ))}
               </div>
-              <p className="small muted" style={{ marginTop: ".75rem" }}><Icon name="pulse" size={13} /> Reach and engagement are daily averages, the other numbers are totals. Metricool refreshes Instagram data about once a day.</p>
+              <p className="small muted" style={{ marginTop: ".75rem" }}><Icon name="pulse" size={13} /> Numbers come from Meta&apos;s Instagram Insights and can lag up to 48 hours. Reach and accounts engaged count distinct people, so for periods longer than 30 days they show the average per 30 days.</p>
             </>
           )}
         </>

@@ -44,6 +44,24 @@ async function graph<T>(method: "GET" | "POST", path: string, token: string | nu
   return j;
 }
 
+// Report reads: answers are kept for `ttl` ms and at most 8 calls run at once (one report is ~15 calls per account).
+// ponytail: per-process memory (each serverless instance has its own); fine for a small team, move to Mongo/Redis if it ever matters.
+const cache = new Map<string, { at: number; data: unknown }>();
+let active = 0; const waiting: (() => void)[] = [];
+const acquire = async () => { if (active < 8) { active++; return; } await new Promise<void>((r) => waiting.push(r)); }; // a freed slot is handed straight to the next waiter
+const release = () => { const next = waiting.shift(); if (next) next(); else active--; };
+export async function graphGet<T>(path: string, token: string, params: Record<string, string> = {}, ttl = 0): Promise<T> {
+  const key = `${token}|${path}|${JSON.stringify(Object.entries(params).sort())}`; // the token is part of the key: a wrong token must never see another login's cached answer
+  const hit = ttl ? cache.get(key) : undefined;
+  if (hit && Date.now() - hit.at < ttl) return hit.data as T;
+  await acquire();
+  try {
+    const data = await graph<T>("GET", path, token, params);
+    if (ttl) { if (cache.size > 500) cache.clear(); cache.set(key, { at: Date.now(), data }); }
+    return data;
+  } finally { release(); }
+}
+
 export const exchangeCode = async (code: string) => { const c = cfg(); return (await graph<{ access_token: string }>("GET", "/oauth/access_token", null, { client_id: c.appId, client_secret: c.appSecret, code, redirect_uri: redirectUri() })).access_token; };
 export async function connectedAccounts(token: string) {
   const [me, acc] = await Promise.all([

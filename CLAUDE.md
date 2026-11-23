@@ -198,13 +198,13 @@ Dashboard logins have a `role` (`lib/roles.ts`): `admin` (everything; a user wit
 The email agent (Hostinger webmail, its own scheduled prompt) reports with `POST /api/mail/threads` (Bearer): `{threads:[{mailbox:"info"|"editorial", email, subject, status, name?, category?, price?, note?, url?, followUpSent?}], run?:{ok,note}}`.
 Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The full email-agent prompt (with the report step) is on the Automation page ("4. Email agent").
 
-## Social-media dashboard (in progress, built step by step)
-Role `social` = the SM team (`/social/*`, no org management; `/social/orgs` is admin-only). Every SM user sees every org. Orgs = one Metricool account each (`orgs`, token encrypted via `lib/secrets.ts`
-with `SECRETS_KEY`, falling back to `API_KEY`); their Instagram accounts are imported from Metricool brands (`socialAccounts`, via `lib/metricool.ts`, `GET /admin/simpleProfiles`).
-Metricool needs an Advanced/Custom plan (not available yet); its OpenAPI is at https://app.metricool.com/api/swagger.json. Reports show selected accounts side by side (Step 2).
-Chat bot builder (Step 3): rule/flow builder with trigger, message and question nodes; buttons, images, links, carousels; official Meta Instagram Messaging API, dev mode first; no conversation log.
-Reports (Step 2, `/social/reports`): per-account columns from Metricool v2 analytics (`lib/igreport.ts`): daily timelines for the previous + current period in one call, posts/reels/stories lists, audience (`/stats/{gender,age,country,city}/instagram`, current state, no dates).
-Date range (7/30/90 or custom), CSV export (`/social/reports/export`), PDF = browser print. Each section fails on its own with Metricool's message. Demographic endpoint params are undocumented in the Swagger: verify with a real token.
+## Social-media dashboard
+Role `social` = the SM team (`/social/*`; `/social/orgs` and `/social/connect` are admin-only). Every SM user sees every org. An org = one client; its Instagram accounts are Meta connections (`botConnections`, token encrypted via `lib/secrets.ts`
+with `SECRETS_KEY`, falling back to `API_KEY`) made by an admin through Meta "Unified Login" (Organizations > Connect Instagram). The same connection powers Reports and Chat bots.
+Reports (`/social/reports`) read Meta's Instagram Insights API directly (`lib/igreport.ts`; needs the `instagram_manage_insights` permission in the login configuration, Advanced Access for client accounts). Meta returns period TOTALS, not per-day values and keeps ~90 days,
+so a daily job (`/api/meta/snapshot`, Vercel cron in `vercel.json`, needs CRON_SECRET = API_KEY) stores one row per account per day (`igDaily`: metrics + followers) and saves stories (`igStories`, they vanish after 24h); the charts are drawn from those rows ("Build history" backfills 28 days).
+Date range 7/30/90 or custom (max 90 days; Meta requests are split into 30-day windows, distinct-account metrics are averaged across windows), CSV export, PDF = browser print. Each section fails on its own with Meta's message.
+Metricool was replaced by this (no subscription needed). Old `orgs.metricool` / `socialAccounts` data in Mongo is unused and can be dropped.
 Chat bots (Step 3, `/social/bots`): rule/flow builder with a drag-and-drop canvas (`components/FlowEditor.tsx`); nodes = trigger (keywords, empty = every message), message (text/image/buttons/carousel), question (saves `{{var}}`, quick answers).
 Pure engine in `lib/botflow.ts` (validation = Meta's limits, payload shapes, matching), runtime in `lib/bot.ts` (session row only while a question waits; no message log), Meta client `lib/meta.ts`.
 Connecting accounts is admin-only (Organizations > Connect Instagram = Meta Unified Login, callback `/api/meta/callback`, webhook `/api/meta/webhook` signature-checked). The OAuth callback lives under /api because the session cookie is SameSite=Strict.

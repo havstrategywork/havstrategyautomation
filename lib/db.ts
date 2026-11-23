@@ -126,15 +126,17 @@ export type MailThread = {
 };
 export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
 
-// Social-media dashboard. An org holds its Metricool login (token stored encrypted, see lib/secrets.ts); its Instagram accounts are imported from the Metricool brands.
-export type Org = { _id?: ObjectId; name: string; metricool?: { userId: string; token: string; syncedAt?: Date }; createdAt: Date };
-export type SocialAccount = { _id?: ObjectId; orgId: ObjectId; blogId: number; brand: string; igHandle: string; picture?: string; connection?: string; syncedAt: Date };
+// Social-media dashboard. An org groups the Instagram accounts of one client; accounts are the Meta connections below.
+export type Org = { _id?: ObjectId; name: string; createdAt: Date };
 
 // Chat bots. A connection = one Instagram account the org's client approved through Meta login (token stored encrypted). A flow belongs to one connection.
 export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
 export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: string; enabled: boolean; nodes: BotNode[]; edges: BotEdge[]; createdAt: Date; updatedAt: Date };
 export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
 export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
+// Report history. Meta only returns period totals (and keeps ~90 days), so a daily job stores one row per account per day: that is what the report charts are drawn from.
+export type IgDaily = { _id: string; igId: string; date: string; m: Record<string, number>; followers?: number; at: Date }; // _id = "<igId>:<YYYY-MM-DD>"
+export type IgStory = { _id: string; igId: string; at: Date; permalink?: string; img?: string; text?: string; stats: Record<string, number>; seenAt: Date }; // stories vanish after 24h, so each is saved when seen
 
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
 // (e.g. after a DNS blip or an .env fix) instead of replaying the same error until someone restarts the server.
@@ -157,7 +159,8 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
   await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
   await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
-  await d.collection("socialAccounts").createIndex({ orgId: 1, blogId: 1 }, { unique: true });
+  await d.collection("igDaily").createIndex({ igId: 1, date: 1 }, { unique: true });
+  await d.collection("igStories").createIndex({ igId: 1, at: -1 });
   await d.collection("botConnections").createIndex({ igId: 1 }, { unique: true });
   await d.collection("botFlows").createIndex({ igId: 1, createdAt: 1 });
   await d.collection("botSessions").createIndex({ at: 1 }, { expireAfterSeconds: 24 * 3600 });
@@ -182,7 +185,8 @@ export async function db() {
     mailThreads: d.collection<MailThread>("mailThreads"),
     mailRuns: d.collection<MailRun>("mailRuns"),
     orgs: d.collection<Org>("orgs"),
-    socialAccounts: d.collection<SocialAccount>("socialAccounts"),
+    igDaily: d.collection<IgDaily>("igDaily"),
+    igStories: d.collection<IgStory>("igStories"),
     botConnections: d.collection<BotConnection>("botConnections"),
     botFlows: d.collection<BotFlowDoc>("botFlows"),
     botSessions: d.collection<BotSession>("botSessions"),
