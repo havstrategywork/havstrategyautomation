@@ -125,6 +125,10 @@ export type MailThread = {
 };
 export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
 
+// Social-media dashboard. An org holds its Metricool login (token stored encrypted, see lib/secrets.ts); its Instagram accounts are imported from the Metricool brands.
+export type Org = { _id?: ObjectId; name: string; metricool?: { userId: string; token: string; syncedAt?: Date }; createdAt: Date };
+export type SocialAccount = { _id?: ObjectId; orgId: ObjectId; blogId: number; brand: string; igHandle: string; picture?: string; connection?: string; syncedAt: Date };
+
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
 // (e.g. after a DNS blip or an .env fix) instead of replaying the same error until someone restarts the server.
 const g = globalThis as unknown as { _mongo?: Promise<MongoClient>; _idx?: Promise<unknown> };
@@ -146,6 +150,7 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
   await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
   await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
+  await d.collection("socialAccounts").createIndex({ orgId: 1, blogId: 1 }, { unique: true });
 }
 
 export async function db() {
@@ -165,6 +170,8 @@ export async function db() {
     dealBatches: d.collection<DealBatch>("dealBatches"),
     mailThreads: d.collection<MailThread>("mailThreads"),
     mailRuns: d.collection<MailRun>("mailRuns"),
+    orgs: d.collection<Org>("orgs"),
+    socialAccounts: d.collection<SocialAccount>("socialAccounts"),
   };
 }
 

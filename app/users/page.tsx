@@ -9,7 +9,7 @@ import { Avatar, PageHead, ago } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-const ABOUT: Record<Role, string> = { admin: "Everything, and manages logins", outreach: "Creators, clients, campaigns, inbox (no Email, no Users)", mail: "Email dashboard only" };
+const ABOUT: Record<Role, string> = { admin: "Everything, and manages logins", outreach: "Creators, clients, campaigns, inbox (no Email, Social or Users)", mail: "Email dashboard only", social: "Social media team: reports and chat bots (no org management)" };
 
 // Every action re-checks the role: the proxy already blocks the page, but a server action must never trust that alone.
 async function admin() {

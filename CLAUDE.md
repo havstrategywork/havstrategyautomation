@@ -197,3 +197,9 @@ Dashboard logins have a `role` (`lib/roles.ts`): `admin` (everything; a user wit
 `proxy.ts` enforces it per path; the mail role never gets `BriefChat` (it carries `API_KEY`). Admins create/edit/delete logins on `/users` (the `set-user.mjs` script still works and makes admins).
 The email agent (Hostinger webmail, its own scheduled prompt) reports with `POST /api/mail/threads` (Bearer): `{threads:[{mailbox:"info"|"editorial", email, subject, status, name?, category?, price?, note?, url?, followUpSent?}], run?:{ok,note}}`.
 Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The full email-agent prompt (with the report step) is on the Automation page ("4. Email agent").
+
+## Social-media dashboard (in progress, built step by step)
+Role `social` = the SM team (`/social/*`, no org management; `/social/orgs` is admin-only). Every SM user sees every org. Orgs = one Metricool account each (`orgs`, token encrypted via `lib/secrets.ts`
+with `SECRETS_KEY`, falling back to `API_KEY`); their Instagram accounts are imported from Metricool brands (`socialAccounts`, via `lib/metricool.ts`, `GET /admin/simpleProfiles`).
+Metricool needs an Advanced/Custom plan (not available yet); its OpenAPI is at https://app.metricool.com/api/swagger.json. Reports show selected accounts side by side (Step 2).
+Chat bot builder (Step 3): rule/flow builder with trigger, message and question nodes; buttons, images, links, carousels; official Meta Instagram Messaging API, dev mode first; no conversation log.

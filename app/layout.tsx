@@ -5,7 +5,7 @@ import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
 import BriefChat from "@/components/BriefChat";
 import { Icon, type IconName } from "@/components/ui";
 import { currentUser } from "@/lib/session";
-import { canView } from "@/lib/roles";
+import { canView, hasApiKey } from "@/lib/roles";
 
 // Self-hosted at build time by next/font (no runtime request to Google, so the CSP stays 'self').
 const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -17,6 +17,7 @@ export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/hav
 const NAV: { group: string; items: [string, string, IconName][] }[] = [
   { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
   { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"]] },
+  { group: "Social", items: [["/social/reports", "Reports", "chart"], ["/social/orgs", "Organizations", "layers"]] },
   { group: "Email", items: [["/mail", "Email agent", "mail"]] },
   { group: "System", items: [["/automation", "Automation", "bolt"], ["/users", "Users", "users"]] },
 ];
@@ -50,7 +51,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
             </aside>
             <main className="main">{children}</main>
             {/* the chat carries the API key, so only roles that may use the outreach API get it */}
-            {user.role !== "mail" && <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />}
+            {hasApiKey(user.role) && <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />}
           </div>
         )}
       </body>
