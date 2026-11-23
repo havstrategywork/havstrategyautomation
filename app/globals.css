@@ -307,6 +307,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .badge[data-s="Replied"], .badge[data-s="email"] { background: var(--violet-bg); color: var(--violet); }
 .badge[data-s="Negotiating"], .badge[data-s="queued"] { background: var(--warn-bg); color: var(--warn); }
 .badge[data-s="Agreed"] { background: var(--good-bg); color: var(--good); }
+.badge[data-s="negotiating"], .badge[data-s="founder_review"] { background: var(--warn-bg); color: var(--warn); }
+.badge[data-s="follow_up"], .badge[data-s="draft"], .badge[data-s="forward_draft"] { background: var(--info-bg); color: var(--info); }
+.badge[data-s="closed"] { background: var(--good-bg); color: var(--good); }
+.badge[data-s="awaiting_sender"] { background: var(--violet-bg); color: var(--violet); }
 .badge[data-s="Declined"], .badge[data-s="failed"] { background: var(--bad-bg); color: var(--bad); }
 .badge.tier { background: transparent; border: 1px solid var(--border-strong); color: var(--text-2); }
 .badge.tier::before { display: none; }

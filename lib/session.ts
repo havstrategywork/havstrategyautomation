@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { db } from "./db";
 import { hashPassword, verifyPassword } from "./password";
+import { roleOf } from "./roles";
 
 export const COOKIE = "hav_session";
 export const SESSION_MS = 7 * 24 * 3600e3; // hard limit: log in again after 7 days
@@ -22,7 +23,7 @@ export async function sessionFor(token?: string) {
   if (!s) return null;
   if (now - +s.lastSeen > 60e3) await sessions.updateOne({ _id: s._id }, { $set: { lastSeen: new Date(now) } });
   const u = await users.findOne({ _id: s.userId });
-  return u ? { id: u._id!, username: u.username } : null;
+  return u ? { id: u._id!, username: u.username, role: roleOf(u.role) } : null; // role is read fresh each request, so a change applies at once
 }
 
 export const currentUser = async () => sessionFor((await cookies()).get(COOKIE)?.value); // only the root layout calls this

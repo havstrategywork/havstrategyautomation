@@ -5,6 +5,7 @@ import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
 import BriefChat from "@/components/BriefChat";
 import { Icon, type IconName } from "@/components/ui";
 import { currentUser } from "@/lib/session";
+import { canView } from "@/lib/roles";
 
 // Self-hosted at build time by next/font (no runtime request to Google, so the CSP stays 'self').
 const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -16,7 +17,8 @@ export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/hav
 const NAV: { group: string; items: [string, string, IconName][] }[] = [
   { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
   { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"]] },
-  { group: "System", items: [["/automation", "Automation", "bolt"]] },
+  { group: "Email", items: [["/mail", "Email agent", "mail"]] },
+  { group: "System", items: [["/automation", "Automation", "bolt"], ["/users", "Users", "users"]] },
 ];
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
@@ -30,7 +32,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
             <aside className="side">
               <div className="brand"><div className="logo"><img src="/havstrategy-logo.svg" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
               <nav aria-label="Main">
-                {NAV.map((g) => (
+                {NAV.map((g) => ({ ...g, items: g.items.filter(([href]) => canView(user.role, href)) })).filter((g) => g.items.length).map((g) => (
                   <div key={g.group} className="nav-group">
                     <div className="nav-label">{g.group}</div>
                     {g.items.map(([href, label, icon]) => <NavLink key={href} href={href}><Icon name={icon} /><span>{label}</span></NavLink>)}
@@ -39,7 +41,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
               </nav>
               <div className="side-foot">
                 <span className="me" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
-                <div className="user"><b>{user.username}</b><small>Signed in</small></div>
+                <div className="user"><b>{user.username}</b><small>{user.role}</small></div>
                 <ThemeToggle />
                 <form method="post" action="/login/logout">
                   <button className="icon-btn" aria-label="Log out" title="Log out"><Icon name="logout" /></button>
@@ -47,7 +49,8 @@ export default async function Layout({ children }: { children: React.ReactNode }
               </div>
             </aside>
             <main className="main">{children}</main>
-            <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />
+            {/* the chat carries the API key, so only roles that may use the outreach API get it */}
+            {user.role !== "mail" && <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />}
           </div>
         )}
       </body>

@@ -191,3 +191,9 @@ The UI needs a login (`proxy.ts`): DB-backed sessions (7 days, 24h idle, revocab
 wrong passwords (5 min, doubling, max 1h), per-IP limit, CSRF origin check, security headers (`next.config.ts`). `/api/*` is NOT behind the login: workers use the Bearer
 `API_KEY` (needs 8+ chars; the server refuses everything if it is unset). Create or reset a user (also signs them out everywhere and clears a lockout):
 `HAV_PW='long passphrase' node --env-file=.env.local --experimental-strip-types scripts/set-user.mjs <username>`
+
+## Roles and the Email dashboard
+Dashboard logins have a `role` (`lib/roles.ts`): `admin` (everything; a user with no role saved is admin), `outreach` (creator pages, no Email/Users/Automation), `mail` (only `/mail`).
+`proxy.ts` enforces it per path; the mail role never gets `BriefChat` (it carries `API_KEY`). Admins create/edit/delete logins on `/users` (the `set-user.mjs` script still works and makes admins).
+The email agent (Hostinger webmail, its own scheduled prompt) reports with `POST /api/mail/threads` (Bearer): `{threads:[{mailbox:"info"|"editorial", email, subject, status, name?, category?, price?, note?, url?, followUpSent?}], run?:{ok,note}}`.
+Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The full email-agent prompt (with the report step) is on the Automation page ("4. Email agent").
