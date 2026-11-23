@@ -2,18 +2,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ObjectId } from "mongodb";
 import { db, type BotConnection } from "@/lib/db";
-import { buildReport, followerSeries, label, liveStories, parseRange, pctChange, prevRange, seriesFrom, todayIn, topBy, TOTALS, type Content, type Range, type Report, type Sec } from "@/lib/igreport";
-import { dailyRows, storiesIn } from "@/lib/igstore";
+import { buildReport, label, parseRange, pctChange, topBy, todayIn, TOTALS, type Content, type Range, type Report, type Sec } from "@/lib/igreport";
 import { unseal } from "@/lib/secrets";
 import { currentUser } from "@/lib/session";
 import { Avatar, Icon, PageHead } from "@/components/ui";
-import { BarList, fmt, LineChart } from "@/components/charts";
+import { BarList, fmt } from "@/components/charts";
 import PrintButton from "@/components/PrintButton";
-import { fillHistory } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const C1 = "var(--c1)", C2 = "var(--c2)";
 const sub = <T,>(s: Sec<T>): T | undefined => (s.ok ? s.data : undefined);
 const errorsOf = (r: Report) => [...new Set([r.account, r.totals, r.split, r.media, ...Object.values(r.audience)].flatMap((s) => (s.ok ? [] : [s.error])))];
 
@@ -29,7 +26,7 @@ function Kpi({ label, cur, prev }: { label: string; cur: number | null | undefin
 }
 
 function Tile({ c }: { c: Content }) {
-  const s = c.stats, bits = [s.reach !== undefined && `reach ${fmt(s.reach)}`, s.views !== undefined && `views ${fmt(s.views)}`, s.likes !== undefined && `${fmt(s.likes)} likes`, s.comments !== undefined && `${fmt(s.comments)} comments`, s.shares !== undefined && `${fmt(s.shares)} shares`, s.interactions !== undefined && `${fmt(s.interactions)} interactions`, s.replies !== undefined && `${fmt(s.replies)} replies`].filter(Boolean);
+  const s = c.stats, bits = [s.reach !== undefined && `reach ${fmt(s.reach)}`, s.views !== undefined && `views ${fmt(s.views)}`, s.likes !== undefined && `${fmt(s.likes)} likes`, s.comments !== undefined && `${fmt(s.comments)} comments`, s.shares !== undefined && `${fmt(s.shares)} shares`, s.interactions !== undefined && `${fmt(s.interactions)} interactions`].filter(Boolean);
   return (
     <li className="tile">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -43,20 +40,14 @@ function Tile({ c }: { c: Content }) {
   );
 }
 
-async function AccountReport({ conn, range, back }: { conn: BotConnection; range: Range; back: string }) {
+async function AccountReport({ conn, range }: { conn: BotConnection; range: Range }) {
   const head = <div className="who"><Avatar name={conn.username ?? conn.igId} /><div className="two"><b>@{conn.username ?? conn.igId}</b><small>Instagram</small></div></div>;
   if (conn.test) return <div className="card rep">{head}<p className="muted small" style={{ margin: ".8rem 0 0" }}>This is a test account (no Meta connection), so there is no real data to show.</p></div>;
   let token: string;
   try { token = unseal(conn.token); } catch { return <div className="card rep">{head}<div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--bad)" }}>The saved Meta token can no longer be read. An admin needs to reconnect this account.</div></div>; }
 
-  const prev = prevRange(range);
-  const [r, rows, saved, live] = await Promise.all([buildReport(token, conn.igId, range), dailyRows(conn.igId, { from: prev.from, to: range.to }), storiesIn(conn.igId, range), liveStories(token, conn.igId).catch(() => [] as Content[])]);
-  const stories: Content[] = [...live, ...saved.filter((s) => !live.some((l) => `${conn.igId}:${l.id}` === s._id)).map((s) => ({ id: s._id, kind: "story" as const, url: s.permalink, img: s.img, text: s.text, at: s.at.toISOString(), stats: s.stats }))];
-  const t = sub(r.totals), account = sub(r.account), media = sub(r.media) ?? [];
-  const errors = errorsOf(r), pts = (k: string) => seriesFrom(rows, k, range), fol = followerSeries(rows, range);
-  const haveDays = rows.filter((x) => x.date >= range.from && x.date <= range.to && x.m.reach !== undefined).length;
-  const net = fol.length > 1 ? fol[fol.length - 1].v - fol[0].v : null;
-  const aggregated = (t?.windows ?? 1) > 1;
+  const r = await buildReport(token, conn.igId, range);
+  const t = sub(r.totals), account = sub(r.account), media = sub(r.media) ?? [], errors = errorsOf(r), aggregated = (t?.windows ?? 1) > 1;
 
   return (
     <div className="card rep">
@@ -65,35 +56,19 @@ async function AccountReport({ conn, range, back }: { conn: BotConnection; range
 
       <h3>Summary</h3>
       <div className="kpis">
-        {account?.followers !== undefined && <div className="kpi"><div className="kpi-label">Followers</div><div className="kpi-value">{fmt(account.followers)}</div><div className="kpi-delta muted">{net === null ? "growth shows once history builds" : `${net >= 0 ? "▲" : "▼"} ${fmt(Math.abs(net))} in this period`}</div></div>}
         {TOTALS.map((m) => <Kpi key={m.key} label={aggregated && m.kind === "unique" ? `${m.label} (avg per 30 days)` : m.label} cur={t?.cur[m.key]} prev={t?.prev[m.key]} />)}
       </div>
 
-      <h3>Over time</h3>
-      {haveDays < 2 && (
-        <div className="notice noprint" style={{ margin: "0 0 .8rem", borderLeftColor: "var(--info)" }}>
-          Meta gives totals, not a value per day, so these charts are built from daily snapshots. A job saves one each day from now on; to see the last month straight away, build it now.
-          <form action={fillHistory} style={{ marginTop: ".5rem" }}><input type="hidden" name="conn" value={String(conn._id)} /><input type="hidden" name="back" value={back} /><button className="small-btn">Build history (last 28 days)</button></form>
-        </div>
-      )}
-      <LineChart title="Accounts reached" lines={[{ name: "Reach", color: C1, pts: pts("reach") }]} />
-      <LineChart title="Views" lines={[{ name: "Views", color: C1, pts: pts("views") }]} />
-      <LineChart title="Accounts engaged" lines={[{ name: "Engaged", color: C1, pts: pts("accounts_engaged") }]} />
-      <LineChart title="Interactions" lines={[{ name: "Interactions", color: C1, pts: pts("total_interactions") }]} />
-      <LineChart title="Likes and comments" lines={[{ name: "Likes", color: C1, pts: pts("likes") }, { name: "Comments", color: C2, pts: pts("comments") }]} />
-      <LineChart title="Saves and shares" lines={[{ name: "Saves", color: C1, pts: pts("saves") }, { name: "Shares", color: C2, pts: pts("shares") }]} />
-      <LineChart title="Followers" lines={[{ name: "Followers", color: C1, pts: fol }]} />
-
-      <h3>By format (last 30 days)</h3>
+      <h3>By format (last 30 days of the period)</h3>
       <div className="aud">
         {(["views", "reach", "total_interactions"] as const).map((k) => <BarList key={k} title={k === "views" ? "Views" : k === "reach" ? "Reach" : "Interactions"} items={(sub(r.split)?.[k] ?? []).map((d) => ({ ...d, key: label("format", d.key) }))} />)}
       </div>
 
-      <h3>Top content</h3>
-      {([["Posts (by interactions)", media.filter((c) => c.kind === "post"), "interactions", r.media.ok], ["Reels (by views)", media.filter((c) => c.kind === "reel"), "views", r.media.ok], ["Stories (by reach)", stories, "reach", true]] as const).map(([name, items, key, ok]) => (
+      <h3>Top posts and reels</h3>
+      {([["Posts (by interactions)", media.filter((c) => c.kind === "post"), "interactions"], ["Reels (by views)", media.filter((c) => c.kind === "reel"), "views"]] as const).map(([name, items, key]) => (
         <div key={name}>
           <div className="small muted" style={{ margin: ".6rem 0 .3rem" }}>{name}</div>
-          {items.length ? <ul className="tiles">{topBy([...items], key).map((c) => <Tile key={c.id} c={c} />)}</ul> : <p className="muted small" style={{ margin: 0 }}>{ok ? "None in this period." : "Could not load."}</p>}
+          {items.length ? <ul className="tiles">{topBy([...items], key).map((c) => <Tile key={c.id} c={c} />)}</ul> : <p className="muted small" style={{ margin: 0 }}>{r.media.ok ? "None in this period." : "Could not load."}</p>}
         </div>
       ))}
 
@@ -121,7 +96,7 @@ async function AccountReport({ conn, range, back }: { conn: BotConnection; range
   );
 }
 
-export default async function Reports({ searchParams }: { searchParams: Promise<{ org?: string; acc?: string | string[]; range?: string; from?: string; to?: string; m?: string }> }) {
+export default async function Reports({ searchParams }: { searchParams: Promise<{ org?: string; acc?: string | string[]; range?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
   const today = todayIn(), { range, preset } = parseRange(sp, today);
   const { orgs, botConnections } = await db();
@@ -134,14 +109,12 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
 
   const keep = (extra: Record<string, string> = {}) => new URLSearchParams({ range: preset, ...(preset === "custom" && { from: range.from, to: range.to }), ...extra });
   const exportQs = new URLSearchParams({ org: String(org?._id ?? ""), from: range.from, to: range.to }); chosen.filter((a) => !a.test).forEach((a) => exportQs.append("acc", String(a._id)));
-  const back = `/social/reports?${keep({ org: String(org?._id ?? "") })}`;
 
   return (
     <>
       <PageHead title="Reports" sub="Instagram performance straight from Meta, one column per account.">
         {chosen.some((a) => !a.test) && (<><a className="btn ghost" href={`/social/reports/export?${exportQs}`}>Export CSV</a><PrintButton /></>)}
       </PageHead>
-      {sp.m && <div className="notice noprint" role="status">{sp.m}</div>}
 
       {!list.length ? (
         <div className="card empty">No organizations yet.{me?.role === "admin" && <> <Link href="/social/orgs">Add one</Link>.</>}</div>
@@ -187,7 +160,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
               <div className="rep-grid">
                 {chosen.map((a) => (
                   <Suspense key={`${a._id}${range.from}${range.to}`} fallback={<div className="card"><div className="who"><Avatar name={a.username ?? a.igId} /><div className="two"><b>@{a.username ?? a.igId}</b><small>Loading from Meta…</small></div></div></div>}>
-                    <AccountReport conn={a} range={range} back={back} />
+                    <AccountReport conn={a} range={range} />
                   </Suspense>
                 ))}
               </div>

@@ -1,7 +1,6 @@
 import { ObjectId } from "mongodb";
 import { db } from "@/lib/db";
-import { buildReport, liveStories, parseRange, prevRange, reportRows, todayIn, toCsv, type Content } from "@/lib/igreport";
-import { dailyRows, storiesIn } from "@/lib/igstore";
+import { buildReport, parseRange, reportRows, todayIn, toCsv } from "@/lib/igreport";
 import { canView } from "@/lib/roles";
 import { unseal } from "@/lib/secrets";
 import { currentUser } from "@/lib/session";
@@ -16,14 +15,12 @@ export async function GET(req: Request) {
   const { botConnections, orgs } = await db(), o = await orgs.findOne({ _id: new ObjectId(org) });
   if (!o) return new Response("Unknown organization", { status: 400 });
   const conns = await botConnections.find({ orgId: o._id!, test: { $ne: true }, ...(want.length && { _id: { $in: want } }) }).sort({ username: 1 }).toArray();
-  const { range } = parseRange({ from: q.get("from") ?? "", to: q.get("to") ?? "" }, todayIn()), prev = prevRange(range);
+  const { range } = parseRange({ from: q.get("from") ?? "", to: q.get("to") ?? "" }, todayIn());
 
   const rows = (await Promise.all(conns.map(async (c) => {
     let token: string;
     try { token = unseal(c.token); } catch { return [[c.username ?? c.igId, "error", "", "", "The saved Meta token can no longer be read: reconnect this account", ""] as (string | number)[]]; }
-    const [report, daily, saved, live] = await Promise.all([buildReport(token, c.igId, range), dailyRows(c.igId, { from: prev.from, to: range.to }), storiesIn(c.igId, range), liveStories(token, c.igId).catch(() => [] as Content[])]);
-    const stories: Content[] = [...live, ...saved.filter((s) => !live.some((l) => `${c.igId}:${l.id}` === s._id)).map((s) => ({ id: s._id.split(":")[1] ?? s._id, kind: "story" as const, url: s.permalink, img: s.img, text: s.text, at: s.at.toISOString(), stats: s.stats }))];
-    return reportRows(c.username ?? c.igId, report, daily, stories);
+    return reportRows(c.username ?? c.igId, await buildReport(token, c.igId, range));
   }))).flat();
   const name = `instagram-report-${o.name.replace(/[^\w-]+/g, "-").toLowerCase()}-${range.from}-to-${range.to}.csv`;
   return new Response("﻿" + toCsv(rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "no-store" } });

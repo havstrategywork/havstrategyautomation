@@ -1,7 +1,6 @@
 import assert from "node:assert";
 import { createServer } from "node:http";
-import type { DailyLike } from "./igreport.ts";
-import { addDays, buildReport, combineWindows, days, followerSeries, getTotals, label, normalizeMedia, normalizeStory, parseBreakdown, parseRange, parseTotals, pctChange, prevRange, reportRows, seriesFrom, toCsv, topBy, TOTALS, unix, windows } from "./igreport.ts";
+import { addDays, buildReport, combineWindows, days, getTotals, label, normalizeMedia, normalizeStory, parseBreakdown, parseRange, parseTotals, pctChange, prevRange, reportRows, toCsv, topBy, TOTALS, unix, windows } from "./igreport.ts";
 
 // ---- dates ----
 assert.equal(addDays("2026-03-01", -1), "2026-02-28");
@@ -43,12 +42,6 @@ const c2 = combineWindows([{ reach: 100, views: 10 }, { reach: 300, views: 30 }]
 assert.deepEqual(c2.values, { reach: 200, views: 40 }); // reach is distinct accounts: averaged, views added
 assert.equal(c2.windows, 2);
 assert.deepEqual(combineWindows([{ views: 5 }]).values, { views: 5 }); // a metric missing everywhere stays missing
-
-// ---- daily rows ----
-const rows: DailyLike[] = [{ date: "2026-11-02", m: { reach: 20 }, followers: 102 }, { date: "2026-11-01", m: { reach: 10 }, followers: 100 }, { date: "2026-10-01", m: { reach: 99 } }, { date: "2026-11-03", m: {} }];
-const rg = { from: "2026-11-01", to: "2026-11-30" };
-assert.deepEqual(seriesFrom(rows, "reach", rg), [{ t: "2026-11-01", v: 10 }, { t: "2026-11-02", v: 20 }]); // sorted, in range, empty rows skipped
-assert.deepEqual(followerSeries(rows, rg), [{ t: "2026-11-01", v: 100 }, { t: "2026-11-02", v: 102 }]);
 
 // ---- csv ----
 assert.equal(toCsv([["a", "s", "=SUM(1)", "", "m, x", -5]]).split("\r\n")[1], `a,s,'=SUM(1),,"m, x",-5`);
@@ -111,10 +104,10 @@ assert.ok(!calls.some((c) => /access_token/.test(c))); // the token goes in a he
 const bad = await buildReport("WRONG", "17841", range);
 assert.ok(!bad.totals.ok && /Invalid OAuth/.test((bad.totals as { error: string }).error) && !bad.account.ok && !bad.media.ok);
 
-// csv rows carry the summary, the stored daily history, format split, content and audience
-const csv = toCsv(reportRows("acme", rep, rows, []));
+// csv rows carry the summary, format split, content and audience
+const csv = toCsv(reportRows("acme", rep));
 assert.ok(csv.includes("acme,summary,,,Views,450") && csv.includes("acme,summary,,,Accounts reached (average per 30 days),225"));
-assert.ok(csv.includes("acme,daily,,2026-11-01,Accounts reached,10") && csv.includes("acme,daily,,2026-11-02,Followers,102"));
+assert.ok(!csv.includes(",daily,")); // no daily history without the daily job
 assert.ok(csv.includes("acme,by format,Reels,,views,60") && csv.includes("acme,audience,gender,,Female,60") && csv.includes("acme,content reel,u2,,reach,90"));
 srv.close();
 console.log("igreport ok");

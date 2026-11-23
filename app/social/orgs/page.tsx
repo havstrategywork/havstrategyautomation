@@ -39,11 +39,11 @@ async function removeOrg(f: FormData) {
 async function disconnect(f: FormData) {
   "use server";
   await admin();
-  const id = oid(f), { botConnections, botFlows, botSessions, igDaily, igStories } = await db(), c = id ? await botConnections.findOne({ _id: id }) : null;
+  const id = oid(f), { botConnections, botFlows, botSessions } = await db(), c = id ? await botConnections.findOne({ _id: id }) : null;
   if (!c) return done("No such connection.");
-  const gone = await botFlows.deleteMany({ igId: c.igId }); // its flows and saved report history go with it: they cannot be used without the account
+  const gone = await botFlows.deleteMany({ igId: c.igId }); // its flows go with it: they cannot run without the account
   await botSessions.deleteMany({ _id: new RegExp(`^${c.igId.replace(/\D/g, "")}:`) });
-  await Promise.all([igDaily.deleteMany({ igId: c.igId }), igStories.deleteMany({ igId: c.igId }), botConnections.deleteOne({ _id: id! })]);
+  await botConnections.deleteOne({ _id: id! });
   revalidatePath("/social/orgs"); done(`Disconnected @${c.username ?? c.igId}${gone.deletedCount ? ` and deleted its ${gone.deletedCount} flow${gone.deletedCount === 1 ? "" : "s"}` : ""}. To revoke access fully, remove the app in the client's Instagram settings.`);
 }
 
@@ -60,7 +60,7 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
       {missing.length > 0 && (
         <div className="notice" style={{ borderLeftColor: "var(--warn)" }}>
           <b>The Meta app is not set up yet.</b> Missing in the environment: {missing.join(", ")}.
-          <div className="small muted" style={{ marginTop: ".35rem" }}>In the Meta app: use case &quot;Manage messaging &amp; content on Instagram&quot; with Unified login. In the login configuration include the permissions <code>instagram_basic</code>, <code>instagram_manage_messages</code> and <code>instagram_manage_insights</code>. Redirect URL <code>{app}/api/meta/callback</code>. Webhook callback URL <code>{app}/api/meta/webhook</code> with the same verify token as META_VERIFY_TOKEN, subscribed to <code>messages</code> and <code>messaging_postbacks</code>. META_CONFIG_ID is the login configuration&apos;s id. For the daily report history, schedule a daily call to <code>{app}/api/meta/snapshot</code> with the header <code>Authorization: Bearer &lt;API_KEY&gt;</code>.</div>
+          <div className="small muted" style={{ marginTop: ".35rem" }}>In the Meta app: use case &quot;Manage messaging &amp; content on Instagram&quot; with Unified login. In the login configuration include the permissions <code>instagram_basic</code>, <code>instagram_manage_messages</code> and <code>instagram_manage_insights</code>. Redirect URL <code>{app}/api/meta/callback</code>. Webhook callback URL <code>{app}/api/meta/webhook</code> with the same verify token as META_VERIFY_TOKEN, subscribed to <code>messages</code> and <code>messaging_postbacks</code>. META_CONFIG_ID is the login configuration&apos;s id.</div>
         </div>
       )}
 

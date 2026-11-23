@@ -1,6 +1,6 @@
 // Instagram report for one connected account, read straight from Meta's Instagram Insights API (the data Meta Business Suite shows).
-// Meta returns TOTALS for a period (not a value per day), so: totals + breakdowns + audience + content are fetched live here, and the daily
-// charts are drawn from rows a daily job stores (lib/igstore.ts). Every section is fetched independently, so one failing call shows its own error.
+// Meta returns TOTALS for a period (not a value per day): totals + format split + audience + top content, all read live. Daily charts, follower history and
+// story history would need a daily job that saves snapshots (not built; see git history). Every section is fetched independently, so one failing call shows its own error.
 import { graphGet, MetaError } from "./meta.ts";
 
 export type Range = { from: string; to: string }; // YYYY-MM-DD, both days included
@@ -169,24 +169,12 @@ export async function buildReport(token: string, igId: string, range: Range): Pr
   return { range, prev, account, totals, split, media, audience: { gender, age, country, city } };
 }
 
-/** Stories only exist for 24 hours, so the daily job saves them; this reads the live ones. */
-export const liveStories = async (token: string, igId: string) =>
-  arr(obj(await graphGet<unknown>(`/${igId}/stories`, token, { fields: "id,caption,media_type,permalink,thumbnail_url,media_url,timestamp,insights.metric(reach,views,shares,total_interactions,replies)" }, 60e3)).data).map(normalizeStory);
-
-// ---- daily history (rows stored by lib/igstore.ts) ----
-export type DailyLike = { date: string; m: Record<string, number>; followers?: number };
-export const seriesFrom = (rows: DailyLike[], key: string, r: Range): Pt[] => rows.filter((x) => x.date >= r.from && x.date <= r.to && x.m[key] !== undefined).map((x) => ({ t: x.date, v: x.m[key] })).sort((a, b) => a.t.localeCompare(b.t));
-export const followerSeries = (rows: DailyLike[], r: Range): Pt[] => rows.filter((x) => x.date >= r.from && x.date <= r.to && x.followers !== undefined).map((x) => ({ t: x.date, v: x.followers! })).sort((a, b) => a.t.localeCompare(b.t));
-
 /** The report as flat rows (account, section, item, date, metric, value) for the CSV export. */
-export function reportRows(account: string, r: Report, daily: DailyLike[], stories: Content[]): (string | number)[][] {
+export function reportRows(account: string, r: Report): (string | number)[][] {
   const out: (string | number)[][] = [];
   if (r.totals.ok) for (const m of TOTALS) { const c = r.totals.data.cur[m.key], p = r.totals.data.prev[m.key]; if (c !== undefined) out.push([account, "summary", "", "", `${m.label}${r.totals.data.windows > 1 && m.kind === "unique" ? " (average per 30 days)" : ""}`, c], [account, "summary", "", "", `${m.label} previous period`, p ?? ""]); }
-  for (const m of TOTALS) for (const p of seriesFrom(daily, m.key, r.range)) out.push([account, "daily", "", p.t, m.label, p.v]);
-  for (const p of followerSeries(daily, r.range)) out.push([account, "daily", "", p.t, "Followers", p.v]);
   if (r.split.ok) for (const [metric, rows] of Object.entries(r.split.data)) for (const d of rows) out.push([account, "by format", label("format", d.key), "", metric, d.value]);
-  const items = [...(r.media.ok ? r.media.data : []), ...stories];
-  for (const c of items) for (const [k, v] of Object.entries(c.stats)) out.push([account, `content ${c.kind}`, c.url ?? c.id, c.at?.slice(0, 10) ?? "", k, v]);
+  for (const c of r.media.ok ? r.media.data : []) for (const [k, v] of Object.entries(c.stats)) out.push([account, `content ${c.kind}`, c.url ?? c.id, c.at?.slice(0, 10) ?? "", k, v]);
   for (const [name, s] of Object.entries(r.audience)) if (s.ok) for (const d of s.data) out.push([account, "audience", name, "", d.key, d.value]);
   return out;
 }
