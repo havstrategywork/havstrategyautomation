@@ -1,4 +1,6 @@
 import { MongoClient, ObjectId } from "mongodb";
+import type { Role } from "./roles";
+import type { MailStatus } from "./mail";
 
 export type Creator = {
   _id?: ObjectId;
@@ -109,9 +111,16 @@ export type BriefDoc = {
 };
 
 // Dashboard login. Passwords are scrypt hashes; sessions store only a SHA-256 of the cookie token, so a DB leak can't be replayed.
-export type User = { _id?: ObjectId; username: string; passwordHash: string; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
+export type User = { _id?: ObjectId; username: string; role?: Role; passwordHash: string; passwordChangedAt?: Date; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
 export type Session = { _id?: ObjectId; tokenHash: string; userId: ObjectId; createdAt: Date; lastSeen: Date; expiresAt: Date; ip?: string; ua?: string };
 export type LoginAttempt = { _id: string; n: number; resetAt: Date }; // per-IP failed-login counter, expires by itself
+
+// Email agent records: one row per conversation (see lib/mail.ts), plus one per finished run.
+export type MailThread = {
+  _id?: ObjectId; key: string; mailbox: string; email: string; name?: string; subject: string; category?: string;
+  status: MailStatus; price?: string; note?: string; url?: string; followUps: number; lastFollowUpAt?: Date; createdAt: Date; updatedAt: Date;
+};
+export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
 
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
 // (e.g. after a DNS blip or an .env fix) instead of replaying the same error until someone restarts the server.
@@ -132,6 +141,8 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // expired sessions delete themselves
   await d.collection("loginAttempts").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });
   await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
+  await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
+  await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
 }
 
 export async function db() {
@@ -149,6 +160,8 @@ export async function db() {
     loginAttempts: d.collection<LoginAttempt>("loginAttempts"),
     briefs: d.collection<BriefDoc>("briefs"),
     dealBatches: d.collection<DealBatch>("dealBatches"),
+    mailThreads: d.collection<MailThread>("mailThreads"),
+    mailRuns: d.collection<MailRun>("mailRuns"),
   };
 }
 

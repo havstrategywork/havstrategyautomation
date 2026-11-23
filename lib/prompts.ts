@@ -1,10 +1,11 @@
 // The scheduled Claude Cowork prompts. Single source: the /automation page renders them with the real URL + key filled in.
 // Self-contained on purpose (a scheduled Cowork task may not see this repo), so the key rules are repeated here.
 
-export type Kind = "briefs" | "outreach" | "guidelines";
+export type Kind = "briefs" | "outreach" | "guidelines" | "mail";
 export const SCHEDULES: Record<Kind, { title: string; when: string; what: string }> = {
   briefs: { title: "1. Briefs: find creators", when: "Every 30 minutes, 9:00–21:00", what: "Picks up briefs from the New brief chat, hunts and scores creators, posts a shortlist for you to approve." },
   outreach: { title: "2. Outreach: replies & sends", when: "Every hour, 9:00–22:00", what: "One Instagram pass: logs creator replies, negotiates within budget and escalates, THEN sends due first DMs and follow-ups (15 per run, max 75 a day)." },
+  mail: { title: "4. Email agent: report to the dashboard", when: "Add to the end of your existing email task prompt (same schedule)", what: "Lets the Email page show negotiations, follow-ups and closed deals. Only an extra reporting step; it changes nothing else the email agent does." },
   guidelines: { title: "3. Guidelines emails", when: "Every hour, 9:00–21:00", what: "Emails the saved guidelines and terms to every creator a client approved (the answers are uploaded by a human on the Campaigns page). No Instagram or Chrome needed." },
 };
 
@@ -153,4 +154,27 @@ Rules: never write, edit, shorten or send an email yourself; the guidelines and 
 creators, emails, rates or terms. If the call fails (non-200), report the status and error text and stop. Don't trigger browser alert/confirm dialogs.`;
 }
 
-export const PROMPTS: Record<Kind, (url: string, key: string) => string> = { briefs: briefsPrompt, outreach: outreachPrompt, guidelines: guidelinesPrompt };
+// Appended to the email agent's own prompt (it keeps its Google Doc, Chrome and draft-only rules). Replaces its "#6 Tracking: log nothing" for the dashboard only.
+export function mailPrompt(url: string, key: string) {
+  return `DASHBOARD REPORTING (add this to the end of the prompt; it overrides Mechanics #6 only for the dashboard below, nothing else changes):
+
+At the end of the run, before your final report, make ONE call that tells the team dashboard what happened. This is not the old tracking script and not a Google Sheet.
+POST ${url || "<APP_URL>"}/api/mail/threads   headers: Authorization: Bearer ${key || "<API_KEY>"}  and  Content-Type: application/json
+(No HTTP tool? Open ONE new Chrome tab at ${url || "<APP_URL>"} and run fetch() from it with the relative path /api/mail/threads.)
+Body:
+{"threads":[{"mailbox":"info"|"editorial","email":"<the sender's address>","name":"<sender name, if known>","subject":"<thread subject>","category":"<doc category>","status":"<one of below>","price":"<latest price discussed, e.g. $120>","note":"<one short line>","url":"<this thread's mail.hostinger.com address in the tab, if you have it>","followUpSent":true}],
+ "run":{"ok":true,"note":"<one line: reviewed per mailbox, replies sent, drafts, errors>"}}
+status (pick the one that is true after this run):
+  negotiating     price/terms are being discussed back and forth
+  follow_up       WE are waiting and a follow-up is due or was just prepared
+  closed          both sides confirmed one price (you wrote no reply; the founder confirms)
+  founder_review  Founder Review: starred, needs the founder
+  awaiting_sender we replied and wait for them
+  draft           a reply draft is saved, not sent
+  forward_draft   a BD or HR forward is drafted, not sent
+  no_action       newsletter, spam, auto-reply, restricted niche
+Rules: include every thread you handled (and every open thread where you sent a follow-up: set "followUpSent":true ONLY when the follow-up was actually sent and confirmed in Sent). Send only what you verified; leave out fields you do not know, never guess an address. Same sender + subject updates the same row, so re-sending is safe. Do not report a draft as sent. If the call fails, say so in your final report and do not retry more than once.
+To see what is still open before deciding on follow-ups: GET ${url || "<APP_URL>"}/api/mail/threads (same header).`;
+}
+
+export const PROMPTS: Record<Kind, (url: string, key: string) => string> = { briefs: briefsPrompt, outreach: outreachPrompt, guidelines: guidelinesPrompt, mail: mailPrompt };

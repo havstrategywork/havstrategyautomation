@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE, sessionFor } from "@/lib/session";
+import { canView, homeFor } from "@/lib/roles";
 
 // Every dashboard page (and its server actions) needs a valid DB-backed session. /api/* is for the workers and has its own Bearer key.
 const PUBLIC = new Set(["/login", "/login/submit"]);
@@ -13,10 +14,11 @@ const go = (req: NextRequest, path: string) => {
 };
 
 export async function proxy(req: NextRequest) {
-  const ok = !!(await sessionFor(req.cookies.get(COOKIE)?.value));
+  const me = await sessionFor(req.cookies.get(COOKIE)?.value);
   const p = req.nextUrl.pathname;
-  if (PUBLIC.has(p)) return ok && p === "/login" ? go(req, "/") : NextResponse.next();
-  return ok ? NextResponse.next() : go(req, "/login");
+  if (PUBLIC.has(p)) return me && p === "/login" ? go(req, homeFor(me.role)) : NextResponse.next();
+  if (!me) return go(req, "/login");
+  return canView(me.role, p) ? NextResponse.next() : go(req, homeFor(me.role)); // wrong role: bounce to its own home (server actions post to the page path, so they are covered too)
 }
 
 export const config = { matcher: ["/((?!api/|_next/static|_next/image|favicon.ico).*)"] };
