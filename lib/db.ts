@@ -1,6 +1,7 @@
 import { MongoClient, ObjectId } from "mongodb";
 import type { Role } from "./roles";
 import type { MailStatus } from "./mail";
+import type { BotEdge, BotNode, Vars } from "./botflow";
 
 export type Creator = {
   _id?: ObjectId;
@@ -129,6 +130,12 @@ export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
 export type Org = { _id?: ObjectId; name: string; metricool?: { userId: string; token: string; syncedAt?: Date }; createdAt: Date };
 export type SocialAccount = { _id?: ObjectId; orgId: ObjectId; blogId: number; brand: string; igHandle: string; picture?: string; connection?: string; syncedAt: Date };
 
+// Chat bots. A connection = one Instagram account the org's client approved through Meta login (token stored encrypted). A flow belongs to one connection.
+export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
+export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: string; enabled: boolean; nodes: BotNode[]; edges: BotEdge[]; createdAt: Date; updatedAt: Date };
+export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
+export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
+
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
 // (e.g. after a DNS blip or an .env fix) instead of replaying the same error until someone restarts the server.
 const g = globalThis as unknown as { _mongo?: Promise<MongoClient>; _idx?: Promise<unknown> };
@@ -151,6 +158,10 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
   await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
   await d.collection("socialAccounts").createIndex({ orgId: 1, blogId: 1 }, { unique: true });
+  await d.collection("botConnections").createIndex({ igId: 1 }, { unique: true });
+  await d.collection("botFlows").createIndex({ igId: 1, createdAt: 1 });
+  await d.collection("botSessions").createIndex({ at: 1 }, { expireAfterSeconds: 24 * 3600 });
+  await d.collection("botSeen").createIndex({ at: 1 }, { expireAfterSeconds: 2 * 24 * 3600 });
 }
 
 export async function db() {
@@ -172,6 +183,10 @@ export async function db() {
     mailRuns: d.collection<MailRun>("mailRuns"),
     orgs: d.collection<Org>("orgs"),
     socialAccounts: d.collection<SocialAccount>("socialAccounts"),
+    botConnections: d.collection<BotConnection>("botConnections"),
+    botFlows: d.collection<BotFlowDoc>("botFlows"),
+    botSessions: d.collection<BotSession>("botSessions"),
+    botSeen: d.collection<BotSeen>("botSeen"),
   };
 }
 

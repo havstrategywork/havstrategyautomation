@@ -6,7 +6,7 @@
     "build": "next build",
     "start": "next start",
     "seed": "node --env-file=.env.local scripts/seed.mjs",
-    "test": "node --experimental-strip-types lib/automation.test.ts && node --experimental-strip-types lib/brief.test.ts && node --experimental-strip-types lib/money.test.ts && node --experimental-strip-types lib/score.test.ts && node --experimental-strip-types lib/csv.test.ts && node --experimental-strip-types lib/template.test.ts && node --experimental-strip-types lib/pagination.test.ts && node --experimental-strip-types lib/dealrules.test.ts && node --experimental-strip-types lib/roles.test.ts && node --experimental-strip-types lib/social.test.ts && node --experimental-strip-types lib/igreport.test.ts"
+    "test": "node --experimental-strip-types lib/automation.test.ts && node --experimental-strip-types lib/brief.test.ts && node --experimental-strip-types lib/money.test.ts && node --experimental-strip-types lib/score.test.ts && node --experimental-strip-types lib/csv.test.ts && node --experimental-strip-types lib/template.test.ts && node --experimental-strip-types lib/pagination.test.ts && node --experimental-strip-types lib/dealrules.test.ts && node --experimental-strip-types lib/roles.test.ts && node --experimental-strip-types lib/social.test.ts && node --experimental-strip-types lib/igreport.test.ts && node --experimental-strip-types lib/botflow.test.ts && node --experimental-strip-types lib/meta.test.ts"
   },
   "dependencies": {
     "@uploadthing/react": "^7.3.3",
