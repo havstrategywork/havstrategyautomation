@@ -6,6 +6,7 @@ import { parseCsv } from "@/lib/csv";
 import { STATUSES, TIERS, tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score } from "@/components/ui";
 
+import Select from "@/components/mui/Select";
 export const dynamic = "force-dynamic";
 
 async function importCsv(f: FormData) {
@@ -54,14 +55,9 @@ export default async function Creators({ searchParams }: { searchParams: Promise
       {sp.msg && <div className="notice">{sp.msg}</div>}
 
       <form className="card filters">
-        <label>Rank for client
-          <select name="clientId" defaultValue={sp.clientId ?? ""}>
-            <option value="">No client</option>
-            {clientList.map((c) => <option key={String(c._id)} value={String(c._id)}>{c.name}</option>)}
-          </select>
-        </label>
-        <label>Status<select name="status" defaultValue={sp.status ?? ""}><option value="">Any</option>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></label>
-        <label>Tier<select name="tier" defaultValue={sp.tier ?? ""}><option value="">Any</option>{TIERS.map((s) => <option key={s}>{s}</option>)}</select></label>
+        <Select label="Rank for client" name="clientId" defaultValue={sp.clientId ?? ""} options={[{ value: "", label: "No client" }, ...clientList.map((c) => ({ value: String(c._id), label: c.name }))]} />
+        <Select label="Status" name="status" defaultValue={sp.status ?? ""} options={[{ value: "", label: "Any" }, ...STATUSES]} />
+        <Select label="Tier" name="tier" defaultValue={sp.tier ?? ""} options={[{ value: "", label: "Any" }, ...TIERS]} />
         <label>Niche<input name="niche" defaultValue={sp.niche} placeholder="fitness" /></label>
         <label>Search<input name="q" defaultValue={sp.q} placeholder="name, @handle, bio" /></label>
         <label>Min score<input name="minScore" type="number" defaultValue={sp.minScore} /></label>

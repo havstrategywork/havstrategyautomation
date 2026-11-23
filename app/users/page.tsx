@@ -6,6 +6,7 @@ import { hashPassword } from "@/lib/password";
 import { ROLES, roleOf, type Role } from "@/lib/roles";
 import { currentUser } from "@/lib/session";
 import { Avatar, PageHead, ago } from "@/components/ui";
+import Select from "@/components/mui/Select";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +68,7 @@ async function remove(f: FormData) {
 export default async function Users({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
   const [{ m }, me, { users }] = await Promise.all([searchParams, admin(), db()]);
   const list = await users.find().sort({ createdAt: 1 }).toArray();
-  const sel = (r: Role) => <select name="role" defaultValue={r}>{ROLES.map((x) => <option key={x} value={x}>{x}</option>)}</select>;
+  const sel = (r: Role, label?: string) => <Select name="role" defaultValue={r} options={[...ROLES]} label={label} compact={!label} ariaLabel="Role" />;
 
   return (
     <>
@@ -79,7 +80,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
         <div className="f2">
           <label>Username<input name="username" required minLength={3} maxLength={32} autoComplete="off" /></label>
           <label>Password<input name="password" type="password" required minLength={10} maxLength={200} autoComplete="new-password" placeholder="10+ characters" /></label>
-          <label>Role{sel("mail")}</label>
+          {sel("mail", "Role")}
         </div>
         <ul className="small muted" style={{ margin: 0, paddingLeft: "1.1rem" }}>{ROLES.map((r) => <li key={r}><b>{r}</b>: {ABOUT[r]}</li>)}</ul>
         <div><button>Create login</button></div>

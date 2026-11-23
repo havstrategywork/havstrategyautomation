@@ -9,8 +9,14 @@
     "test": "node --experimental-strip-types lib/automation.test.ts && node --experimental-strip-types lib/brief.test.ts && node --experimental-strip-types lib/money.test.ts && node --experimental-strip-types lib/score.test.ts && node --experimental-strip-types lib/csv.test.ts && node --experimental-strip-types lib/template.test.ts && node --experimental-strip-types lib/pagination.test.ts && node --experimental-strip-types lib/dealrules.test.ts && node --experimental-strip-types lib/roles.test.ts && node --experimental-strip-types lib/social.test.ts && node --experimental-strip-types lib/igreport.test.ts && node --experimental-strip-types lib/botflow.test.ts && node --experimental-strip-types lib/meta.test.ts && node --experimental-strip-types lib/igdemo.test.ts"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^9.5.0",
+    "@mui/material-nextjs": "^9.5.0",
+    "@mui/x-date-pickers": "^9.18.0",
     "@uploadthing/react": "^7.3.3",
     "csv-parse": "^7.0.3",
+    "dayjs": "^1.11.23",
     "mongodb": "^7.9.0",
     "next": "^16.4.6",
     "nodemailer": "^10.6.0",

@@ -9,6 +9,8 @@ import { currentUser } from "@/lib/session";
 import { Avatar, Icon, PageHead } from "@/components/ui";
 import { BarList, fmt } from "@/components/charts";
 import PrintButton from "@/components/PrintButton";
+import { DateRange } from "@/components/mui/DateField";
+import Select from "@/components/mui/Select";
 
 export const dynamic = "force-dynamic";
 
@@ -144,13 +146,8 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
                 ))}
               </div>
               <div className="f2" style={{ alignItems: "end" }}>
-                <label>Period
-                  <select name="range" defaultValue={preset}>
-                    <option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="custom">Custom range (dates below, up to 90 days)</option>
-                  </select>
-                </label>
-                <label>From<input type="date" name="from" defaultValue={range.from} max={today} /></label>
-                <label>To<input type="date" name="to" defaultValue={range.to} max={today} /></label>
+                <Select label="Period" name="range" defaultValue={preset} options={[{ value: "7", label: "Last 7 days" }, { value: "30", label: "Last 30 days" }, { value: "90", label: "Last 90 days" }, { value: "custom", label: "Custom range (dates on the right, up to 90 days)" }]} />
+                <DateRange from={range.from} to={range.to} max={today} />
               </div>
               <div className="row spread"><button>Show report</button><span className="small muted">{range.from} to {range.to}, compared with the same number of days before.</span></div>
             </form>

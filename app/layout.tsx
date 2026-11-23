@@ -4,6 +4,7 @@ import NavLink from "@/components/NavLink";
 import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
 import BriefChat from "@/components/BriefChat";
 import { Icon, type IconName } from "@/components/ui";
+import MuiProviders from "@/components/mui/Providers";
 import { currentUser } from "@/lib/session";
 import { canView, hasApiKey } from "@/lib/roles";
 
@@ -28,6 +29,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
     <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable} ${display.variable}`}>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
+        <MuiProviders>
         {!user ? children : (
           <div className="shell">
             <aside className="side">
@@ -54,6 +56,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
             {hasApiKey(user.role) && <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />}
           </div>
         )}
+        </MuiProviders>
       </body>
     </html>
   );

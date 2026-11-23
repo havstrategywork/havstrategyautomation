@@ -17,5 +17,5 @@ export default function ThemeToggle() {
   );
 }
 
-// Runs in <head> before first paint: applies the saved choice so the page never flashes the wrong theme.
-export const themeScript = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+// Runs in <head> before first paint: applies the saved choice (or the system's) so the page never flashes the wrong theme.
+export const themeScript = `var d=document.documentElement,t=null;try{t=localStorage.getItem("theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.dataset.theme=t`;

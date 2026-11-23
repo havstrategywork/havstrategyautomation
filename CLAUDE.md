@@ -209,3 +209,8 @@ Chat bots (Step 3, `/social/bots`): rule/flow builder with a drag-and-drop canva
 Pure engine in `lib/botflow.ts` (validation = Meta's limits, payload shapes, matching), runtime in `lib/bot.ts` (session row only while a question waits; no message log), Meta client `lib/meta.ts`.
 Connecting accounts is admin-only (Organizations > Connect Instagram = Meta Unified Login, callback `/api/meta/callback`, webhook `/api/meta/webhook` signature-checked). The OAuth callback lives under /api because the session cookie is SameSite=Strict.
 `scripts/test-connection.mjs "<org>"` adds a fake (test:true) connection so the builder can be tried without Meta. Untested against real Meta (no app yet): token expiry/refresh, webhook subscription call, App Review.
+
+## Dropdowns and calendars (Material UI)
+Every dropdown and date picker uses Material UI (`@mui/material` 9, `@mui/x-date-pickers` 9 + dayjs), wrapped in `components/mui/`: `Select` (submits `name` like a native select; controlled via `value`/`onChange`, `compact`, per-option `disabled`), `DateField` (shows DD/MM/YYYY, submits `YYYY-MM-DD` through a hidden input, empty = no date) and `DateRange` (linked From/To). Never use a native `<select>` or `<input type="date">`.
+The theme (`components/mui/Providers.tsx`) reuses the app's CSS variables and the `data-theme` light/dark switch (`themeScript` always sets `data-theme`; MUI reads the same `theme` localStorage key).
+The global element styles for `input/select/textarea/button` in `globals.css` skip anything inside `.mui-scope` and MUI's popups (`.MuiPopper-root` etc.), so they don't leak into MUI's own elements.
