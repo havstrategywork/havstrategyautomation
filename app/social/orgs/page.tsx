@@ -60,7 +60,7 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
       {missing.length > 0 && (
         <div className="notice" style={{ borderLeftColor: "var(--warn)" }}>
           <b>The Meta app is not set up yet.</b> Missing in the environment: {missing.join(", ")}.
-          <div className="small muted" style={{ marginTop: ".35rem" }}>In the Meta app: use case &quot;Manage messaging &amp; content on Instagram&quot; with Unified login. In the login configuration include the permissions <code>instagram_basic</code>, <code>instagram_manage_messages</code> and <code>instagram_manage_insights</code>. Redirect URL <code>{app}/api/meta/callback</code>. Webhook callback URL <code>{app}/api/meta/webhook</code> with the same verify token as META_VERIFY_TOKEN, subscribed to <code>messages</code> and <code>messaging_postbacks</code>. META_CONFIG_ID is the login configuration&apos;s id.</div>
+          <div className="small muted" style={{ marginTop: ".35rem" }}>In the Meta app: use case &quot;Manage messaging &amp; content on Instagram&quot; with Unified login. In the login configuration include the permissions <code>instagram_business_basic</code>, <code>instagram_business_manage_messages</code> and <code>instagram_business_manage_insights</code> (Meta&apos;s current names; older apps may show them without &quot;business_&quot;). Redirect URL <code>{app}/api/meta/callback</code>. Webhook callback URL <code>{app}/api/meta/webhook</code> with the same verify token as META_VERIFY_TOKEN, subscribed to <code>messages</code> and <code>messaging_postbacks</code>. META_CONFIG_ID is the login configuration&apos;s id.</div>
         </div>
       )}
 
