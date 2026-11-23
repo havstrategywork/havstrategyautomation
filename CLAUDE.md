@@ -185,4 +185,4 @@ wrong passwords (5 min, doubling, max 1h), per-IP limit, CSRF origin check, secu
 Dashboard logins have a `role` (`lib/roles.ts`): `admin` (everything; a user with no role saved is admin), `outreach` (creator pages, no Email/Users/Automation), `mail` (only `/mail`).
 `proxy.ts` enforces it per path; the mail role never gets `BriefChat` (it carries `API_KEY`). Admins create/edit/delete logins on `/users` (the `set-user.mjs` script still works and makes admins).
 The email agent (Hostinger webmail, its own scheduled prompt) reports with `POST /api/mail/threads` (Bearer): `{threads:[{mailbox:"info"|"editorial", email, subject, status, name?, category?, price?, note?, url?, followUpSent?}], run?:{ok,note}}`.
-Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The prompt addendum is on the Automation page ("4. Email agent").
+Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The full email-agent prompt (with the report step) is on the Automation page ("4. Email agent").
