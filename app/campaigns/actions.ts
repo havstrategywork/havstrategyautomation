@@ -9,7 +9,8 @@ import { editBrief, queueShortlist, submitBrief } from "@/lib/briefs";
 import { docIdFromUrl, type BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
 import { render } from "@/lib/template";
-import { applyAnswers, createBatch, createLocalBatch, markShared, sendGuidelines } from "@/lib/deals";
+import { applyAnswers, createBatch, createLocalBatch, deadlineVars, markShared, sendFollowEmail, sendGuidelines, type FollowEmail } from "@/lib/deals";
+import { daysLabel, daysLeft } from "@/lib/dealrules";
 import { csvRows } from "@/lib/dealrules";
 import { xlsxRows } from "@/lib/xlsx";
 
@@ -133,6 +134,37 @@ export async function sendGuidelinesAction(fd: FormData) {
     return `Guidelines emailed to ${r.sent}.${r.noEmail.length ? ` No email on file for ${r.noEmail.join(", ")}: reach them on Instagram.` : ""}${r.blocked ? ` ${r.blocked} held back by EMAIL_ALLOWLIST (test mode).` : ""}${r.failed ? ` ${r.failed} failed (see Outreach).` : ""}${r.capped ? " Stopped at the daily email cap." : ""}`;
   });
 }
+
+/** Saves the script reminder + deadline emails and the content deadline date (one form, under the guidelines email). */
+export async function saveFollowEmailsAction(fd: FormData) {
+  await requireUser();
+  await back(async () => {
+    const cl = await (await db()).clients.findOne({ _id: idOf(fd) });
+    if (!cl) throw new Error("client not found");
+    const script = String(fd.get("script") ?? "").trim(), deadline = String(fd.get("deadlineEmail") ?? "").trim(), date = String(fd.get("contentDeadline") ?? "").trim();
+    if (date && daysLeft(date) === null) throw new Error("the content deadline must be a date");
+    const vars = { name: "Sam", handle: "sam", rate: "10k INR", ...deadlineVars(date || "2030-01-01") };
+    for (const [label, t] of [["Script reminder", script], ["Deadline email", deadline]] as const) {
+      try { render(t || "x", vars); } catch (e) { throw new Error(`${label}: ${(e as Error).message}. Only {{name}}, {{handle}}, {{rate}}, {{deadline}} and {{days}} can be filled in.`); }
+    }
+    await upsertClient({ name: cl.name, scriptReminderTemplate: script, deadlineTemplate: deadline, contentDeadline: date });
+    return "Script reminder and deadline email saved.";
+  });
+}
+
+async function sendFollow(fd: FormData, kind: FollowEmail) {
+  await requireUser();
+  await back(async () => {
+    const id = idOf(fd);
+    const r = await sendFollowEmail(id, kind);
+    const cl = kind === "deadline" ? await (await db()).clients.findOne({ _id: id }) : null;
+    const d = cl ? daysLeft(cl.contentDeadline) : null;
+    const what = kind === "script" ? "Script reminder" : `Deadline email${d !== null ? ` (${daysLabel(d)})` : ""}`;
+    return `${what} sent to ${r.sent}.${r.noEmail.length ? ` No email on file for ${r.noEmail.join(", ")}: reach them on Instagram.` : ""}${r.blocked ? ` ${r.blocked} held back by EMAIL_ALLOWLIST (test mode).` : ""}${r.failed ? ` ${r.failed} failed (see Outreach).` : ""}${r.capped ? " Stopped at the daily email cap." : ""}`;
+  });
+}
+export async function sendScriptReminderAction(fd: FormData) { await sendFollow(fd, "script"); }
+export async function sendDeadlineAction(fd: FormData) { await sendFollow(fd, "deadline"); }
 
 /** Back to Cowork for more candidates (it skips everyone already on the shortlist). */
 export async function findMore(fd: FormData) {

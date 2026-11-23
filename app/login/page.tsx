@@ -11,7 +11,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
     <main className="auth">
       <div className="auth-top"><ThemeToggle /></div>
       <form method="post" action="/login/submit" className="card form">
-        <div className="brand"><div className="logo"><img src="/havstrategy-logo.svg" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
+        <div className="brand"><div className="logo"><img src="/havstrategy-logo.png" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
         <div>
           <h1>Welcome <em>back</em></h1>
           <p className="muted small" style={{ margin: ".3rem 0 0" }}>Sign in to manage creators and outreach.</p>

@@ -4,7 +4,7 @@ import nodemailer from "nodemailer";
 import { db, sentToday, type Creator } from "./db";
 import { tierOf } from "./fields";
 import { addTab, createSheet, mergeDocToPdf } from "./sheet";
-import { emailAllowed, handleKey, parseRows, splitSubject } from "./dealrules";
+import { daysLabel, daysLeft, emailAllowed, handleKey, parseRows, splitSubject } from "./dealrules";
 import { sheetIdFromUrl } from "./brief";
 import { firstName, render } from "./template";
 import { notify } from "./notify";
@@ -141,5 +141,64 @@ export async function sendGuidelines(clientId: ObjectId) {
     }
   }
   if (res.sent) await notify(`Guidelines emailed: ${cl.name}`, `${res.sent} sent${res.noEmail.length ? `, ${res.noEmail.length} have no email` : ""}.`);
+  return res;
+}
+
+/** The two emails that follow the guidelines, sent from the Campaigns page by a human. Only to creators who already got the guidelines.
+ *  script: once per creator. deadline: at most once per creator per day (it can be re-sent as the date gets closer). */
+export type FollowEmail = "script" | "deadline";
+const FOLLOW = {
+  script: { field: "scriptReminderSentAt", tpl: "scriptReminderTemplate", label: "Script reminder" },
+  deadline: { field: "deadlineEmailAt", tpl: "deadlineTemplate", label: "Deadline email" },
+} as const;
+
+/** Creators of this client who would get this email right now (the dynamic count on the button). */
+export function followFilter(clientId: ObjectId, kind: FollowEmail) {
+  const since = new Date(Date.now() - 20 * 3600_000); // deadline: not again within ~a day
+  return {
+    dealClientId: clientId, clientDecision: "yes" as const, guidelinesSentAt: { $exists: true },
+    ...(kind === "script" ? { scriptReminderSentAt: { $exists: false } } : { $or: [{ deadlineEmailAt: { $exists: false } }, { deadlineEmailAt: { $lt: since } }] }),
+  };
+}
+
+/** Fills {{deadline}} / {{days}} from the client's content deadline (empty if none is set; render() then still works). */
+export function deadlineVars(deadline?: string) {
+  const d = daysLeft(deadline);
+  const pretty = deadline && d !== null ? new Date(`${deadline}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }) : "";
+  return { deadline: pretty, days: d === null ? "" : d > 0 ? `${d} day${d === 1 ? "" : "s"}` : d === 0 ? "today" : `${daysLabel(d)}` };
+}
+
+export async function sendFollowEmail(clientId: ObjectId, kind: FollowEmail) {
+  const { clients, creators, outreach } = await db();
+  const f = FOLLOW[kind];
+  const cl = await clients.findOne({ _id: clientId });
+  const tpl = cl?.[f.tpl];
+  if (!cl || !tpl) throw new Error(`save the ${f.label.toLowerCase()} for this client first`);
+  if (kind === "deadline" && daysLeft(cl.contentDeadline) === null) throw new Error("set the content deadline date for this client first");
+  const dv = deadlineVars(cl.contentDeadline);
+  render(tpl, { name: "x", handle: "x", rate: "x", ...dv }); // fail early on a bad placeholder
+  const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD are not set");
+  const mail = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+  const cap = Number(process.env.EMAIL_DAILY_CAP ?? 100);
+  const res = { sent: 0, noEmail: [] as string[], blocked: 0, failed: 0, capped: false };
+  for (const c of await creators.find(followFilter(clientId, kind)).toArray()) {
+    if (!c.email) { res.noEmail.push(c.igHandle ? `@${c.igHandle}` : c.name); continue; }
+    if (!emailAllowed(c.email, process.env.EMAIL_ALLOWLIST)) { res.blocked++; continue; }
+    if ((await sentToday("email")) >= cap) { res.capped = true; break; }
+    const prev = c[f.field];
+    if (!(await creators.findOneAndUpdate({ _id: c._id, ...followFilter(clientId, kind) }, { $set: { [f.field]: new Date() } }))) continue; // claimed by a double click
+    const { subject, body } = splitSubject(render(tpl, { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "", ...dv }));
+    try {
+      await mail.sendMail({ from: user, to: c.email, subject, text: body });
+      await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind, subject, message: body, status: "sent", createdAt: new Date(), sentAt: new Date() });
+      res.sent++;
+    } catch (e) {
+      await creators.updateOne({ _id: c._id }, prev ? { $set: { [f.field]: prev } } : { $unset: { [f.field]: "" } }); // release the claim
+      await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind, subject, message: body, status: "failed", error: (e as Error).message.slice(0, 200), createdAt: new Date() });
+      res.failed++;
+    }
+  }
+  if (res.sent) await notify(`${f.label} sent: ${cl.name}`, `${res.sent} sent${res.noEmail.length ? `, ${res.noEmail.length} have no email` : ""}.`);
   return res;
 }

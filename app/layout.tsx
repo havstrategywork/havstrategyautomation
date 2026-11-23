@@ -13,7 +13,7 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-display", display: "swap" });
 
-export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/havstrategy-logo.svg", shortcut: "/havstrategy-logo.svg" } };
+export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/havstrategy-logo.png", shortcut: "/havstrategy-logo.png" } };
 
 const NAV: { group: string; items: [string, string, IconName][] }[] = [
   { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
@@ -33,7 +33,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
         {!user ? children : (
           <div className="shell">
             <aside className="side">
-              <div className="brand"><div className="logo"><img src="/havstrategy-logo.svg" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
+              <div className="brand"><div className="logo"><img src="/havstrategy-logo.png" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
               <nav aria-label="Main">
                 {NAV.map((g) => ({ ...g, items: g.items.filter(([href]) => canView(user.role, href)) })).filter((g) => g.items.length).map((g) => (
                   <div key={g.group} className="nav-group">

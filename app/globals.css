@@ -547,3 +547,12 @@ details > div { margin-top: .4rem; white-space: pre-wrap; color: var(--text); ma
 /* Material UI date fields: same text size and height as the app's other inputs */
 .mui-scope .MuiPickersInputBase-root { font-size: inherit; }
 .mui-scope .MuiPickersInputBase-sectionsContainer { padding-block: 8.5px; }
+
+/* Campaigns: script reminder + deadline emails after the guidelines */
+.follow-emails { border-top: 1px solid var(--border); padding-top: 1rem; }
+.deadline-pick { gap: .5rem; align-items: center; font-size: 13px; }
+.deadline-pick input { width: auto; }
+.days-pill { font-size: 12px; font-weight: 600; padding: .15rem .55rem; border-radius: 999px; white-space: nowrap; }
+.days-pill.good, .deadline-btn.good:not(:disabled) { background: var(--good-bg); color: var(--good); }
+.days-pill.warn, .deadline-btn.warn:not(:disabled) { background: var(--warn-bg); color: var(--warn); }
+.days-pill.bad, .deadline-btn.bad:not(:disabled) { background: var(--bad-bg); color: var(--bad); }

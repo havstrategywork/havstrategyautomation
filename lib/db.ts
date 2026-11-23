@@ -42,6 +42,8 @@ export type Creator = {
   clientNote?: string;
   decidedAt?: Date;
   guidelinesSentAt?: Date; // the guidelines email went out; later sheet changes are ignored
+  scriptReminderSentAt?: Date; // script reminder email went out (once per creator, only after guidelines)
+  deadlineEmailAt?: Date; // last deadline email (at most one per creator per day, only after guidelines)
 };
 export type Client = {
   _id?: ObjectId;
@@ -54,6 +56,9 @@ export type Client = {
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
   sheetUrl?: string; // the client's own Google Sheet (from the brief): each review batch becomes a new "Content creators" tab in it
   guidelinesTemplate?: string; // email sent to creators the client said Yes to. First line "Subject: ..."; {{name}} {{handle}} {{rate}} are filled in
+  scriptReminderTemplate?: string; // sent after guidelines: reminds the creator to send their script. Same format; also {{deadline}} {{days}}
+  deadlineTemplate?: string; // sent after guidelines: content deadline reminder. Same format; also {{deadline}} {{days}}
+  contentDeadline?: string; // "YYYY-MM-DD": the date the creators' content is due; the dashboard shows the days remaining
   guidelinesFileUrl?: string; // static brand guidelines/deck (PDF or PPTX), same for every creator; attached as-is to the guidelines email
   guidelinesFileName?: string;
   termsDocId?: string; // master Terms Google Doc id ({{name}}/{{brand}} placeholders); merged + exported to a personalized PDF per creator
@@ -88,7 +93,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup" | "guidelines" | "terms"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator. "terms" = the per-creator Doc merge failed (see sendGuidelines)
+  kind?: "first" | "followup" | "guidelines" | "terms" | "script" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator. "terms" = the per-creator Doc merge failed (see sendGuidelines)
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;
