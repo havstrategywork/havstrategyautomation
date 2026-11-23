@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { ObjectId } from "mongodb";
 import { db, type BotConnection } from "@/lib/db";
 import { buildReport, label, parseRange, pctChange, topBy, todayIn, TOTALS, type Content, type Range, type Report, type Sec } from "@/lib/igreport";
+import { demoReport } from "@/lib/igdemo";
 import { unseal } from "@/lib/secrets";
 import { currentUser } from "@/lib/session";
 import { Avatar, Icon, PageHead } from "@/components/ui";
@@ -42,16 +43,19 @@ function Tile({ c }: { c: Content }) {
 
 async function AccountReport({ conn, range }: { conn: BotConnection; range: Range }) {
   const head = <div className="who"><Avatar name={conn.username ?? conn.igId} /><div className="two"><b>@{conn.username ?? conn.igId}</b><small>Instagram</small></div></div>;
-  if (conn.test) return <div className="card rep">{head}<p className="muted small" style={{ margin: ".8rem 0 0" }}>This is a test account (no Meta connection), so there is no real data to show.</p></div>;
-  let token: string;
-  try { token = unseal(conn.token); } catch { return <div className="card rep">{head}<div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--bad)" }}>The saved Meta token can no longer be read. An admin needs to reconnect this account.</div></div>; }
-
-  const r = await buildReport(token, conn.igId, range);
+  let r: Report;
+  if (conn.test) r = demoReport(range, conn.igId); // test accounts have no Meta connection: made-up numbers, labelled below
+  else {
+    let token: string;
+    try { token = unseal(conn.token); } catch { return <div className="card rep">{head}<div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--bad)" }}>The saved Meta token can no longer be read. An admin needs to reconnect this account.</div></div>; }
+    r = await buildReport(token, conn.igId, range);
+  }
   const t = sub(r.totals), account = sub(r.account), media = sub(r.media) ?? [], errors = errorsOf(r), aggregated = (t?.windows ?? 1) > 1;
 
   return (
     <div className="card rep">
       <div className="who"><Avatar name={conn.username ?? conn.igId} /><div className="two"><b>@{account?.username ?? conn.username ?? conn.igId}</b><small>{account?.followers !== undefined ? `${fmt(account.followers)} followers` : "Instagram"}{account?.media !== undefined ? ` · ${fmt(account.media)} posts` : ""}</small></div></div>
+      {conn.test && <div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--info)" }}><b>Demo data.</b> This is a test account, so these numbers are made up to show how the report looks.</div>}
       {errors.length > 0 && <div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--warn)" }}><b>Some numbers could not load:</b> {errors.slice(0, 3).join(" ")}</div>}
 
       <h3>Summary</h3>
@@ -108,12 +112,12 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
   const on = new Set(chosen.map((a) => String(a._id)));
 
   const keep = (extra: Record<string, string> = {}) => new URLSearchParams({ range: preset, ...(preset === "custom" && { from: range.from, to: range.to }), ...extra });
-  const exportQs = new URLSearchParams({ org: String(org?._id ?? ""), from: range.from, to: range.to }); chosen.filter((a) => !a.test).forEach((a) => exportQs.append("acc", String(a._id)));
+  const exportQs = new URLSearchParams({ org: String(org?._id ?? ""), from: range.from, to: range.to }); chosen.forEach((a) => exportQs.append("acc", String(a._id)));
 
   return (
     <>
       <PageHead title="Reports" sub="Instagram performance straight from Meta, one column per account.">
-        {chosen.some((a) => !a.test) && (<><a className="btn ghost" href={`/social/reports/export?${exportQs}`}>Export CSV</a><PrintButton /></>)}
+        {chosen.length > 0 && (<><a className="btn ghost" href={`/social/reports/export?${exportQs}`}>Export CSV</a><PrintButton /></>)}
       </PageHead>
 
       {!list.length ? (
