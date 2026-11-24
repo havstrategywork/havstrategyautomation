@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 async function resolve(f: FormData) {
   "use server";
   const { creators } = await db();
-  await creators.updateOne({ _id: new ObjectId(String(f.get("id"))) }, { $unset: { needsHuman: "" } }); // hands the thread back to Claude
+  const guidance = String(f.get("guidance") ?? "").trim().slice(0, 1000);
+  // hands the thread back to Claude; empty guidance = Claude decides
+  await creators.updateOne({ _id: new ObjectId(String(f.get("id"))) }, guidance ? { $unset: { needsHuman: "" }, $set: { guidance } } : { $unset: { needsHuman: "", guidance: "" } });
   revalidatePath("/inbox");
 }
 
@@ -34,9 +36,13 @@ export default async function Inbox() {
         ))}
       </div>
       {t.creator.needsHuman && (
-        <div className="row spread" style={{ marginTop: ".9rem" }}>
-          <div className="notice" style={{ margin: 0, flex: 1 }}><b>Why Claude stopped:</b> {t.creator.needsHuman.reason}</div>
-          <form action={resolve}><input type="hidden" name="id" value={String(t.creator._id)} /><button className="ghost" style={{ background: "var(--surface)", color: "var(--text)", borderColor: "var(--border)" }}>Resolve, hand back to Claude</button></form>
+        <div style={{ marginTop: ".9rem" }}>
+          <div className="notice" style={{ margin: 0 }}><b>Why Claude stopped:</b> {t.creator.needsHuman.reason}</div>
+          <form action={resolve} style={{ marginTop: ".6rem" }}>
+            <input type="hidden" name="id" value={String(t.creator._id)} />
+            <textarea name="guidance" rows={2} maxLength={1000} placeholder="What should Claude do next? (optional. Leave empty and Claude decides)" style={{ width: "100%" }} />
+            <button className="ghost" style={{ marginTop: ".5rem", background: "var(--surface)", color: "var(--text)", borderColor: "var(--border)" }}>Resolve, hand back to Claude</button>
+          </form>
         </div>
       )}
     </div>

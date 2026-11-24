@@ -9,6 +9,7 @@ import { currentUser } from "@/lib/session";
 import { Avatar, Icon, PageHead } from "@/components/ui";
 import { BarList, fmt } from "@/components/charts";
 import PrintButton from "@/components/PrintButton";
+import { Delta, OrgTabs } from "@/components/social";
 import { DateRange } from "@/components/mui/DateField";
 import Select from "@/components/mui/Select";
 
@@ -17,13 +18,12 @@ export const dynamic = "force-dynamic";
 const sub = <T,>(s: Sec<T>): T | undefined => (s.ok ? s.data : undefined);
 const errorsOf = (r: Report) => [...new Set([r.account, r.totals, r.split, r.media, ...Object.values(r.audience)].flatMap((s) => (s.ok ? [] : [s.error])))];
 
-function Kpi({ label, cur, prev }: { label: string; cur: number | null | undefined; prev: number | null | undefined }) {
-  const d = pctChange(cur, prev);
+function Kpi({ label, cur, prev, big }: { label: string; cur: number | null | undefined; prev: number | null | undefined; big?: boolean }) {
   return (
-    <div className="kpi" title={prev == null ? undefined : `Previous period: ${fmt(prev)}`}>
+    <div className={`kpi${big ? " big" : ""}`} title={prev == null ? undefined : `Previous period: ${fmt(prev)}`}>
       <div className="kpi-label">{label}</div>
       <div className="kpi-value">{fmt(cur ?? null)}</div>
-      <div className="kpi-delta muted">{d === null ? "no comparison" : `${d >= 0 ? "▲" : "▼"} ${Math.abs(d).toFixed(1)}% vs previous`}</div>
+      <Delta cur={cur} prev={prev} />
     </div>
   );
 }
@@ -56,14 +56,23 @@ async function AccountReport({ conn, range }: { conn: BotConnection; range: Rang
 
   return (
     <div className="card rep">
-      <div className="who"><Avatar name={conn.username ?? conn.igId} /><div className="two"><b>@{account?.username ?? conn.username ?? conn.igId}</b><small>{account?.followers !== undefined ? `${fmt(account.followers)} followers` : "Instagram"}{account?.media !== undefined ? ` · ${fmt(account.media)} posts` : ""}</small></div></div>
+      <div className="acct-head">
+        <Avatar name={conn.username ?? conn.igId} large />
+        <div className="two"><b>@{account?.username ?? conn.username ?? conn.igId}</b><small>Instagram{conn.test ? " · test account" : ""}</small></div>
+        <div className="acct-stats">
+          {account?.followers !== undefined && <div><b>{fmt(account.followers)}</b><small>followers</small></div>}
+          {account?.media !== undefined && <div><b>{fmt(account.media)}</b><small>posts</small></div>}
+        </div>
+      </div>
       {conn.test && <div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--info)" }}><b>Demo data.</b> This is a test account, so these numbers are made up to show how the report looks.</div>}
       {errors.length > 0 && <div className="notice" style={{ margin: ".8rem 0 0", borderLeftColor: "var(--warn)" }}><b>Some numbers could not load:</b> {errors.slice(0, 3).join(" ")}</div>}
 
       <h3>Summary</h3>
-      <div className="kpis">
-        {TOTALS.map((m) => <Kpi key={m.key} label={aggregated && m.kind === "unique" ? `${m.label} (avg per 30 days)` : m.label} cur={t?.cur[m.key]} prev={t?.prev[m.key]} />)}
-      </div>
+      {[TOTALS.slice(0, 4), TOTALS.slice(4)].map((group, i) => (
+        <div key={i} className={`kpis${i === 0 ? " hero4" : ""}`}>
+          {group.map((m) => <Kpi key={m.key} big={i === 0} label={aggregated && m.kind === "unique" ? `${m.label} (avg per 30 days)` : m.label} cur={t?.cur[m.key]} prev={t?.prev[m.key]} />)}
+        </div>
+      ))}
 
       <h3>By format (last 30 days of the period)</h3>
       <div className="aud">
@@ -126,12 +135,10 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
         <div className="card empty">No organizations yet.{me?.role === "admin" && <> <Link href="/social/orgs">Add one</Link>.</>}</div>
       ) : (
         <>
-          <div className="row noprint" style={{ marginBottom: "1rem" }}>
-            {list.map((o) => <Link key={String(o._id)} className={`btn ${o._id === org._id ? "" : "ghost"}`} href={`/social/reports?${keep({ org: String(o._id) })}`}>{o.name}</Link>)}
-          </div>
+          <OrgTabs orgs={list} current={String(org._id)} href={(id) => `/social/reports?${keep({ org: id })}`} />
 
           {accounts.length ? (
-            <form className="card form noprint" method="get" action="/social/reports">
+            <form className="card form noprint filters" method="get" action="/social/reports">
               <input type="hidden" name="org" value={String(org._id)} />
               <div className="row spread">
                 <h2 style={{ margin: 0 }}>Instagram accounts <span className="muted small">({chosen.length} of {accounts.length} selected)</span></h2>
@@ -139,7 +146,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
               </div>
               <div className="row">
                 {accounts.map((a) => (
-                  <label key={String(a._id)} className="row" style={{ gap: ".5rem", flexWrap: "nowrap", padding: ".4rem .7rem", border: "1px solid var(--border)", borderRadius: 10, cursor: "pointer", background: "var(--surface)" }}>
+                  <label key={String(a._id)} className="acct-pick">
                     <input type="checkbox" name="acc" value={String(a._id)} defaultChecked={on.has(String(a._id))} style={{ width: "auto" }} />
                     <Avatar name={a.username ?? a.igId} /><span className="two"><b>@{a.username ?? a.igId}</b><small>{a.test ? "test account" : "Instagram"}</small></span>
                   </label>

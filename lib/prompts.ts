@@ -85,6 +85,7 @@ PART A — Replies and negotiation
 3. GET /api/conversations?view=pending: chats where the creator spoke last. Skip anything not listed (someone already answered).
    EVERY listed chat gets a reply this run (no batch limit), unless it must be escalated. Only when this list is empty (nobody is waiting on us) do you
    go on to PART B and its follow-ups. For each one read the whole "thread" and the "client": "offer" is the brief, "tierRates"/"maxRate" are the budget limits.
+   If a chat has "guidance", a human handed it back with that instruction: do what it says (the budget limits and escalation rules still apply). No "guidance" = you decide.
 4. Reply with POST /api/messages {"direction":"out","igHandle":"<handle>","text":"<reply>","price":"<amount + currency, ONLY if you state a price>"}.
    A 422 means the price was refused (too high, wrong currency, or no budget set): offer less or escalate. At most ONE reply per creator per run.
 5. GET /api/messages/next. Before typing each reply, look at the END of that chat. If the last message isn't the creator's, or a newer

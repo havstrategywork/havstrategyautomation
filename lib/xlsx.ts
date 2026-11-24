@@ -19,3 +19,8 @@ export async function xlsxRows(buf: Buffer): Promise<string[][]> {
 export async function creatorsXlsx(rows: (string | number)[][]) {
   return writeXlsxFile([HEADER, ...rows]).toBuffer();
 }
+
+/** Any table (first row = header) as a downloadable .xlsx buffer. */
+export async function rowsXlsx(rows: (string | number)[][]) {
+  return writeXlsxFile(rows).toBuffer();
+}

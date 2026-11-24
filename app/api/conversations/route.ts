@@ -33,10 +33,12 @@ export async function GET(req: Request) {
 
   const out = [];
   for (const { creator: c, last, thread } of await threads()) {
-    if (last.direction !== "in" || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle)) continue;
+    // a thread with human guidance is pending even if our last message was a queued reply that got cancelled by the escalation
+    if ((last.direction !== "in" && !c.guidance) || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle)) continue;
     const cl = await clientFor(c);
     out.push({
       creatorId: c._id, name: c.name, igHandle: c.igHandle, status: c.status, quotedRate: c.quotedRate, agreedRate: c.agreedRate,
+      ...(c.guidance && { guidance: c.guidance }), // the human's instruction for this thread: follow it (budget rules still apply). Absent = you decide.
       client: cl && { id: cl._id, name: cl.name, offer: cl.offer, notes: cl.notes, maxRate: cl.maxRate, tierRates: cl.tierRates },
       thread: thread.map((m) => ({ from: m.direction === "in" ? "creator" : m.by === "human" ? "human" : "claude", text: m.text, at: m.at })),
     });

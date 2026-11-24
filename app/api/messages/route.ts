@@ -35,6 +35,7 @@ export async function POST(req: Request) {
     // Claude's own sent replies come back through here too (the poster can't tell them apart); the duplicate check absorbs them.
     if (await alreadyLogged(c._id!, "out", text)) return Response.json({ ok: true, duplicate: true });
     await messages.insertOne({ creatorId: c._id!, direction: "out", by: "human", text, at: await nextAt(c._id!), status: "sent" });
+    await creators.updateOne({ _id: c._id! }, { $unset: { guidance: "" } });
     const cancelled = await messages.updateMany({ creatorId: c._id!, direction: "out", status: "queued" }, { $set: { status: "failed", error: "a human replied first" } });
     return Response.json({ ok: true, cancelledQueuedReplies: cancelled.modifiedCount });
   }
@@ -52,5 +53,6 @@ export async function POST(req: Request) {
     price = fmtMoney(parsed);
   }
   const r = await messages.insertOne({ creatorId: c._id!, direction: "out", by: "claude", text, at: await nextAt(c._id!), status: "queued", ...(price && { price }) });
+  await creators.updateOne({ _id: c._id! }, { $unset: { guidance: "" } }); // guidance is used up once Claude has replied
   return Response.json({ ok: true, id: r.insertedId });
 }

@@ -35,6 +35,7 @@ export type Creator = {
   declinedAt?: Date;
   undeliverable?: { reason: string; at: Date }; // Instagram said our DM can't be delivered (e.g. "can't receive your message"): no follow-ups, not shortlisted again
   needsHuman?: { reason: string; at: Date }; // Claude stops replying until a human resolves this
+  guidance?: string; // what the human told Claude to do next when handing the thread back; empty/absent = Claude decides. Cleared once anyone replies.
   // client review of agreed deals (see lib/deals.ts)
   dealClientId?: ObjectId; // which client this deal is for (from the first DM's client)
   batchId?: ObjectId; // the review sheet this creator is on
@@ -138,6 +139,7 @@ export type Org = { _id?: ObjectId; name: string; createdAt: Date };
 export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
 export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: string; enabled: boolean; nodes: BotNode[]; edges: BotEdge[]; createdAt: Date; updatedAt: Date };
 export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
+export type Onboarding = { _id?: ObjectId; at: Date; services: string[]; answers: Record<string, string>; ipHash?: string; sheet?: { ok: boolean; at: Date; error?: string } }; // a public onboarding-form submission (lib/onboarding.ts)
 export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
 
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
@@ -189,6 +191,7 @@ export async function db() {
     botFlows: d.collection<BotFlowDoc>("botFlows"),
     botSessions: d.collection<BotSession>("botSessions"),
     botSeen: d.collection<BotSeen>("botSeen"),
+    onboarding: d.collection<Onboarding>("onboarding"),
   };
 }
 

@@ -110,6 +110,7 @@ Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min
 3. `GET /api/conversations?view=pending`: threads where **the creator spoke last**. A thread where a human (or Claude) already answered
    is NOT listed, so **skip it. Do not reply to it, not even to add something.** It reappears here only when the creator writes again.
    For each pending one, read the whole `thread`, the `client` (`offer` = your brief, `tierRates`/`maxRate` = hard ceiling, see "Money") and decide.
+   A pending entry may carry `guidance`: the instruction a human typed on the Inbox when handing the thread back. Follow it (ceiling and escalation rules still win); no `guidance` = you decide. It is cleared once a reply is posted.
 4. Reply: `POST /api/messages {direction:"out", igHandle, text, price?}`. **Put any price you state in `price` (e.g. "10k INR")**; the server refuses
    anything above the ceiling (422), so counter lower or escalate.
 5. `GET /api/messages/next`: before typing each one, **look at the end of that thread in Chrome**. If the last message is not the creator's

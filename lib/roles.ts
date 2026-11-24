@@ -6,7 +6,7 @@ export type Role = (typeof ROLES)[number];
 export const roleOf = (r?: string): Role => (ROLES as readonly string[]).includes(r ?? "") ? (r as Role) : "admin";
 
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
-const ADMIN_ONLY = ["/users", "/automation", "/social/orgs", "/social/connect"];
+const ADMIN_ONLY = ["/users", "/automation", "/social/orgs", "/social/connect", "/onboarding-responses"];
 
 /** May this role open this dashboard path? (/login/* is always allowed: logout must work for everyone.) */
 export function canView(role: Role, p: string) {

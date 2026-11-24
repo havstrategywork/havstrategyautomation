@@ -3,7 +3,8 @@ const dev = process.env.NODE_ENV !== "production";
 const csp = [
   "default-src 'self'", `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`, "style-src 'self' 'unsafe-inline'",
   // img-src allows https: so Instagram thumbnails in the social reports load (their CDN hosts vary)
-  "img-src 'self' data: blob: https:", "font-src 'self' data:", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'self'", "base-uri 'self'", "object-src 'none'",
+  "img-src 'self' data: blob: https:", "font-src 'self' data:", // connect-src: the public onboarding form uploads files straight from the browser to UploadThing
+  "connect-src 'self' https://*.ingest.uploadthing.com https://*.ufs.sh https://uploadthing.com https://*.uploadthing.com", "frame-ancestors 'none'", "form-action 'self'", "base-uri 'self'", "object-src 'none'",
 ].join("; ");
 
 export default {

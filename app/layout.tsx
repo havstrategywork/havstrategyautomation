@@ -17,8 +17,8 @@ export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/hav
 
 const NAV: { group: string; items: [string, string, IconName][] }[] = [
   { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
-  { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"]] },
-  { group: "Social", items: [["/social/reports", "Reports", "chart"], ["/social/bots", "Chat bots", "chat"], ["/social/orgs", "Organizations", "layers"]] },
+  { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"], ["/onboarding-responses", "Onboarding", "inbox"]] },
+  { group: "Social", items: [["/social", "Overview", "grid"], ["/social/reports", "Reports", "chart"], ["/social/bots", "Chat bots", "chat"], ["/social/orgs", "Organizations", "layers"]] },
   { group: "Email", items: [["/mail", "Email agent", "mail"]] },
   { group: "System", items: [["/automation", "Automation", "bolt"], ["/users", "Users", "users"]] },
 ];

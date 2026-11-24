@@ -101,3 +101,23 @@ export async function addTab(spreadsheetId: string, rows: (string | number)[][])
     throw e;
   }
 }
+
+/** Adds one row at the bottom of `tab` in the agency's own Google Sheet (shared with our service account as Editor). The tab and its header row are created on first use.
+ *  RAW input, so an answer that starts with "=" stays plain text instead of becoming a formula. */
+export async function appendRow(spreadsheetId: string, tab: string, header: string[], row: (string | number)[]) {
+  const { bearer, email } = await token();
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, range = encodeURIComponent(`'${tab}'!A1`);
+  try {
+    let first: unknown[] | undefined;
+    try { first = (await call(bearer, `${base}/values/${encodeURIComponent(`'${tab}'!1:1`)}`, "GET")).values?.[0]; }
+    catch (e) { // a missing tab is a 400 "Unable to parse range": make it, then write the header
+      if (!/Google API 400/.test((e as Error).message)) throw e;
+      await call(bearer, `${base}:batchUpdate`, "POST", { requests: [{ addSheet: { properties: { title: tab, gridProperties: { frozenRowCount: 1 } } } }] });
+    }
+    if (!first?.length) await call(bearer, `${base}/values/${range}?valueInputOption=RAW`, "PUT", { values: [header] });
+    await call(bearer, `${base}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, "POST", { values: [row] });
+  } catch (e) {
+    if (/Google API (403|404)/.test((e as Error).message)) throw new Error(`can't open the Google Sheet: share it with ${email} as Editor`);
+    throw e;
+  }
+}

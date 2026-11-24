@@ -38,6 +38,11 @@ export const ourFileRouter = {
     .onUploadComplete(async ({ metadata, file }) => {
       await (await db()).clients.updateOne({ _id: new ObjectId(metadata.clientId) }, { $set: { guidelinesFileUrl: file.ufsUrl, guidelinesFileName: file.name } });
     }),
+  // PUBLIC: the onboarding form's uploads (logos, brand manual, customer list...). No login, so it is capped hard: 16MB a file, 5 files a field.
+  // Types are limited by uploadthing's categories; the form only ever stores the resulting URLs.
+  onboardingFile: f({ image: { maxFileSize: "16MB", maxFileCount: 5 }, pdf: { maxFileSize: "16MB", maxFileCount: 5 }, blob: { maxFileSize: "16MB", maxFileCount: 5 } })
+    .middleware(async () => ({}))
+    .onUploadComplete(async () => ({})),
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;

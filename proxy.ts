@@ -3,7 +3,7 @@ import { COOKIE, sessionFor } from "@/lib/session";
 import { canView, homeFor } from "@/lib/roles";
 
 // Every dashboard page (and its server actions) needs a valid DB-backed session. /api/* is for the workers and has its own Bearer key.
-const PUBLIC = new Set(["/login", "/login/submit"]);
+const PUBLIC = new Set(["/login", "/login/submit", "/onboarding"]); // /onboarding is the public client form (its API, /api/onboarding, is outside this matcher)
 // Absolute URL built from the forwarded headers, so redirects stay on the ngrok address instead of jumping to localhost.
 const go = (req: NextRequest, path: string) => {
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
