@@ -15,3 +15,4 @@ assert.equal(homeFor("social"), "/social/reports");
 assert.ok(hasApiKey("admin") && hasApiKey("outreach") && !hasApiKey("mail") && !hasApiKey("social"));
 console.log("roles ok");
 assert.ok(canView("admin", "/onboarding-responses") && !canView("outreach", "/onboarding-responses") && !canView("social", "/onboarding-responses") && !canView("mail", "/onboarding-responses/export"));
+assert.ok(canView("admin", "/settings") && !canView("outreach", "/settings") && !canView("social", "/settings") && !canView("mail", "/settings"));

@@ -102,6 +102,25 @@ export async function addTab(spreadsheetId: string, rows: (string | number)[][])
   }
 }
 
+/** The service account's address (what the client must share their sheet with), or undefined when GOOGLE_SA_JSON is missing or broken. No network. */
+export function serviceEmail(): string | undefined {
+  try { return (JSON.parse(process.env.GOOGLE_SA_JSON ?? "") as { client_email?: string }).client_email; } catch { return undefined; }
+}
+
+/** Can we write to this spreadsheet? Returns its name, or throws a message the settings page shows as is. */
+export async function checkSheet(id: string) {
+  const { bearer, email } = await token();
+  let f: { name?: string; mimeType?: string; capabilities?: { canEdit?: boolean } };
+  try { f = await call(bearer, `https://www.googleapis.com/drive/v3/files/${id}?fields=name,mimeType,capabilities/canEdit&supportsAllDrives=true`, "GET"); }
+  catch (e) {
+    if (/Google API (403|404)/.test((e as Error).message)) throw new Error(`Can't open that sheet. Open it in Google Sheets, click Share, add ${email} as Editor, then save again.`);
+    throw e;
+  }
+  if (f.mimeType !== "application/vnd.google-apps.spreadsheet") throw new Error("That link is not a Google Sheet (an Excel file stored in Drive won't work). Open it and use File > Save as Google Sheets, then paste the new link.");
+  if (!f.capabilities?.canEdit) throw new Error(`${email} can only view that sheet. Change its access to Editor, then save again.`);
+  return f.name ?? "Untitled";
+}
+
 /** Adds one row at the bottom of `tab` in the agency's own Google Sheet (shared with our service account as Editor). The tab and its header row are created on first use.
  *  RAW input, so an answer that starts with "=" stays plain text instead of becoming a formula. */
 export async function appendRow(spreadsheetId: string, tab: string, header: string[], row: (string | number)[]) {

@@ -37,3 +37,17 @@ assert.equal(row[0], "2026-11-24 10:30");
 assert.equal(row[1], "SEO, Meta Ads"); // in the order the client chose them
 assert.equal(row[HEADER.indexOf("Which keywords, topics or pages do you most want to rank for?")], "pizza");
 console.log("onboarding ok");
+import { sheetIdFromUrl } from "./onboarding.ts";
+const sid = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+assert.equal(sheetIdFromUrl(`https://docs.google.com/spreadsheets/d/${sid}/edit?gid=0#gid=0`), sid);
+assert.equal(sheetIdFromUrl(`  https://docs.google.com/spreadsheets/d/${sid}  `), sid);
+assert.equal(sheetIdFromUrl(sid), sid);
+assert.equal(sheetIdFromUrl(`https://docs.google.com/forms/d/${sid}/edit`), null); // a Form is not a sheet
+assert.equal(sheetIdFromUrl(`https://evil.com/spreadsheets/d/${sid}`), null);
+assert.equal(sheetIdFromUrl("hello"), null);
+console.log("sheet link ok");
+const site = validate({ services: ["seo"], answers: { ...base, website: "mysite.com" } });
+assert.ok(site.ok && site.answers.website === "https://mysite.com"); // no https:// needed
+assert.ok(validate({ services: ["seo"], answers: { ...base, website: "http://a.co/x?y=1" } }).ok);
+assert.equal(validate({ services: ["seo"], answers: { ...base, website: "not a site" } }).ok, false);
+console.log("website ok");

@@ -21,4 +21,5 @@ export async function proxy(req: NextRequest) {
   return canView(me.role, p) ? NextResponse.next() : go(req, homeFor(me.role)); // wrong role: bounce to its own home (server actions post to the page path, so they are covered too)
 }
 
-export const config = { matcher: ["/((?!api/|_next/static|_next/image|favicon.ico).*)"] };
+// the logo is public: the login page and the public onboarding form show it to signed-out visitors
+export const config = { matcher: ["/((?!api/|_next/static|_next/image|favicon.ico|havstrategy-logo.png).*)"] };

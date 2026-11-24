@@ -8,6 +8,9 @@ const csp = [
 ].join("; ");
 
 export default {
+  // Dev only: `next dev` answers its own scripts with 403 unless the page was opened from "localhost", so the public onboarding form looked fine but did nothing
+  // from 127.0.0.1, a phone on the same wifi, or an ngrok link. These origins may use the dev server.
+  allowedDevOrigins: ["127.0.0.1", "192.168.*.*", "10.*.*.*", "*.ngrok-free.app", "*.ngrok-free.dev", "*.ngrok.app", "*.ngrok.io"],
   serverExternalPackages: ["mongodb"],
   poweredByHeader: false,
   async headers() {

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { notify } from "@/lib/notify";
 import { validate } from "@/lib/onboarding";
 import { pushToSheet } from "@/lib/onboardingSheet";
+import { pushToNotion } from "@/lib/notionBrief";
 
 // PUBLIC endpoint (the onboarding page posts here; no login, no Bearer key). So it is defensive: size cap, honeypot, per-IP limit, strict validation.
 // The answer is saved first; the Google Sheet push runs after the response and its result is recorded on the submission.
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
   const { insertedId } = await onboarding.insertOne({ at, services: v.services, answers: v.answers, ipHash });
   after(async () => {
     await pushToSheet(insertedId);
+    await pushToNotion(insertedId);
     await notify(`New onboarding: ${v.answers.company}`, `${v.answers.name} (${v.answers.email}) · ${v.services.join(", ")}`);
   });
   return Response.json({ ok: true });

@@ -139,7 +139,13 @@ export type Org = { _id?: ObjectId; name: string; createdAt: Date };
 export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
 export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: string; enabled: boolean; nodes: BotNode[]; edges: BotEdge[]; createdAt: Date; updatedAt: Date };
 export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
-export type Onboarding = { _id?: ObjectId; at: Date; services: string[]; answers: Record<string, string>; ipHash?: string; sheet?: { ok: boolean; at: Date; error?: string } }; // a public onboarding-form submission (lib/onboarding.ts)
+export type Onboarding = {
+  _id?: ObjectId; at: Date; services: string[]; answers: Record<string, string>; ipHash?: string;
+  sheet?: { ok: boolean; at: Date; error?: string };
+  notion?: { ok: boolean; at: Date; error?: string; url?: string }; // the condensed brief page (lib/notionBrief.ts)
+}; // a public onboarding-form submission (lib/onboarding.ts)
+// dashboard settings, one doc per area: _id "onboardingSheet" (where onboarding answers are pushed) or "onboardingNotion" (where the brief page is created)
+export type Setting = { _id: string; sheetUrl?: string; sheetId?: string; sheetName?: string; tab?: string; pageId?: string; pageUrl?: string; pageTitle?: string; updatedAt: Date; by?: string };
 export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
 
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
@@ -192,6 +198,7 @@ export async function db() {
     botSessions: d.collection<BotSession>("botSessions"),
     botSeen: d.collection<BotSeen>("botSeen"),
     onboarding: d.collection<Onboarding>("onboarding"),
+    settings: d.collection<Setting>("settings"),
   };
 }
 

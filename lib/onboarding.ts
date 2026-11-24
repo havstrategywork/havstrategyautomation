@@ -29,7 +29,7 @@ export const STEPS: Step[] = [
       t("name", "Your name", { required: true, placeholder: "Full name" }),
       { id: "email", label: "Email", type: "email", required: true, placeholder: "you@company.com" },
       t("company", "Company or brand name", { required: true }),
-      { id: "website", label: "Website", type: "url", placeholder: "https://" },
+      { id: "website", label: "Website", type: "url", placeholder: "yourbrand.com" },
       t("phone", "Phone or WhatsApp (optional)"),
     ],
   },
@@ -150,7 +150,7 @@ export const STEPS: Step[] = [
   {
     id: "seo", services: ["seo"], title: "SEO", intro: "Your website and what you want to rank for.",
     fields: [
-      { id: "sWebsite", label: "Which website should we work on?", type: "url", placeholder: "https://" },
+      { id: "sWebsite", label: "Which website should we work on?", type: "url", placeholder: "yourbrand.com" },
       l("sKeywords", "Which keywords, topics or pages do you most want to rank for?"),
       l("sLocation", "Which locations and languages do you want to rank in?"),
       l("sPast", "Any past SEO work, penalties, redesigns or migrations we should know about?"),
@@ -195,7 +195,7 @@ export function stepErrors(step: Step, a: Record<string, string>): Record<string
     const v = (a[fd.id] ?? "").trim();
     if (fd.required && !v) err[fd.id] = "This one is required.";
     else if (v && fd.type === "email" && !EMAIL.test(v)) err[fd.id] = "Enter a valid email address.";
-    else if (v && fd.type === "url" && !/^https?:\/\/\S+\.\S+$/i.test(v)) err[fd.id] = "Enter a full link, starting with https://";
+    else if (v && fd.type === "url" && !/^(https?:\/\/)?[^\s/]+\.[^\s/]+\S*$/i.test(v)) err[fd.id] = "Enter a website address, like yourbrand.com";
     else if (v && fd.type === "scale" && !/^(10|[1-9])$/.test(v)) err[fd.id] = "Pick a number from 1 to 10.";
     else if (v && fd.type === "file" && !v.split("\n").every((x) => FILE_LINE.test(x.trim()) && FILE_HOST.test(x.trim().match(FILE_LINE)![1]))) err[fd.id] = "Upload files with the uploader.";
     else if (v.length > MAX_TEXT) err[fd.id] = `Keep it under ${MAX_TEXT} characters.`;
@@ -214,9 +214,17 @@ export function validate(body: unknown): { ok: true; services: ServiceId[]; answ
     for (const fd of step.fields) answers[fd.id] = typeof raw[fd.id] === "string" ? (raw[fd.id] as string).trim() : "";
     const err = stepErrors(step, answers);
     const first = Object.entries(err)[0];
-    if (first) return { ok: false, error: `${step.title}: ${step.fields.find((x) => x.id === first[0])!.label} ${first[1]}` };
+    if (first) return { ok: false, error: `${step.title}: "${step.fields.find((x) => x.id === first[0])!.label.slice(0, 70)}" - ${first[1]}` };
   }
+  for (const fd of allFields()) if (fd.type === "url" && answers[fd.id] && !/^https?:\/\//i.test(answers[fd.id])) answers[fd.id] = `https://${answers[fd.id]}`; // "mysite.com" is stored as a link
   return { ok: true, services, answers };
+}
+
+/** The spreadsheet id inside a pasted Google Sheets link (or a bare id). Anything else (a Form, a Doc, an .xlsx link) gives null. */
+export function sheetIdFromUrl(input: string): string | null {
+  const v = input.trim();
+  const m = v.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([\w-]{20,})/i);
+  return m ? m[1] : /^[\w-]{30,}$/.test(v) ? v : null;
 }
 
 /** Sheet / Excel layout: Submitted, Services, then every question in form order (blank when it wasn't asked). */

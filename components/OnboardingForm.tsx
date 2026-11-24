@@ -68,7 +68,7 @@ function FieldView({ field, value, error, onChange, i }: { field: Field; value: 
             </div>
             <div className="ob-scale-ends"><span>Not important</span><span>Essential</span></div>
           </div>
-        ) : <input type={field.type === "email" ? "email" : field.type === "url" ? "url" : "text"} autoComplete={field.id === "email" ? "email" : field.id === "name" ? "name" : field.id === "company" ? "organization" : "off"} {...common} />}
+        ) : <input type={field.type === "email" ? "email" : "text"} inputMode={field.type === "url" ? "url" : undefined} autoComplete={field.id === "email" ? "email" : field.id === "name" ? "name" : field.id === "company" ? "organization" : "off"} {...common} />}
       {error && <div className="ob-err" id={`${id}-e`} role="alert">{error}</div>}
     </div>
   );
@@ -88,7 +88,8 @@ export default function OnboardingForm() {
     setReady(true);
   }, []);
   useEffect(() => { if (ready && !done) try { localStorage.setItem(KEY, JSON.stringify({ services, answers, stepId })); } catch {} }, [ready, done, services, answers, stepId]);
-  useEffect(() => { if (ready) head.current?.focus({ preventScroll: true }); }, [stepId, ready]);
+  const moved = useRef(false); // move focus to the heading only after the visitor navigates, not on first load
+  useEffect(() => { if (!ready) return; if (moved.current) head.current?.focus({ preventScroll: true }); moved.current = true; }, [stepId, ready]);
 
   const set = (id: string, v: string) => { setAnswers((a) => ({ ...a, [id]: v })); if (errors[id]) setErrors((e) => ({ ...e, [id]: "" })); };
   const toggle = (id: ServiceId) => setServices((s) => (s.includes(id) ? s.filter((x) => x !== id) : SERVICES.map((x) => x.id).filter((x) => x === id || s.includes(x))));

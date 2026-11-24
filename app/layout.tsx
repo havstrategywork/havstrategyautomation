@@ -20,7 +20,7 @@ const NAV: { group: string; items: [string, string, IconName][] }[] = [
   { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"], ["/onboarding-responses", "Onboarding", "inbox"]] },
   { group: "Social", items: [["/social", "Overview", "grid"], ["/social/reports", "Reports", "chart"], ["/social/bots", "Chat bots", "chat"], ["/social/orgs", "Organizations", "layers"]] },
   { group: "Email", items: [["/mail", "Email agent", "mail"]] },
-  { group: "System", items: [["/automation", "Automation", "bolt"], ["/users", "Users", "users"]] },
+  { group: "System", items: [["/automation", "Automation", "bolt"], ["/users", "Users", "users"], ["/settings", "Settings", "settings"]] },
 ];
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
