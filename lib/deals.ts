@@ -8,6 +8,7 @@ import { daysLabel, daysLeft, emailAllowed, handleKey, parseRows, splitSubject }
 import { sheetIdFromUrl } from "./brief";
 import { firstName, render } from "./template";
 import { notify } from "./notify";
+import { DEFAULT_DEADLINE, DEFAULT_GUIDELINES, DEFAULT_SCRIPT } from "./emailtemplates";
 
 /** Agreed deals (rate set, ceiling already enforced when it was saved) that are not on a sheet yet, grouped by client id.
  *  The client is the one on the creator's first DM. ponytail: a creator DM'd for two clients goes to the first; split by hand if that's wrong. */
@@ -110,8 +111,9 @@ export async function sendAllGuidelines() {
 export async function sendGuidelines(clientId: ObjectId) {
   const { clients, creators, outreach } = await db();
   const cl = await clients.findOne({ _id: clientId });
-  if (!cl?.guidelinesTemplate) throw new Error("save the guidelines email for this client first");
-  render(cl.guidelinesTemplate, { name: "x", handle: "x", rate: "x", brand: "x" }); // fail early on a bad placeholder
+  if (!cl) throw new Error("client not found");
+  const tplG = cl.guidelinesTemplate || DEFAULT_GUIDELINES;
+  render(tplG, { name: "x", handle: "x", rate: "x", brand: "x" }); // fail early on a bad placeholder
   const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD are not set");
   const mail = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
@@ -123,7 +125,7 @@ export async function sendGuidelines(clientId: ObjectId) {
     if ((await sentToday("email")) >= cap) { res.capped = true; break; }
     if (!(await creators.findOneAndUpdate({ _id: c._id, guidelinesSentAt: { $exists: false } }, { $set: { guidelinesSentAt: new Date() } }))) continue; // someone else just sent it
     const vars = { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "", brand: cl.name };
-    const { subject, body } = splitSubject(render(cl.guidelinesTemplate, vars));
+    const { subject, body } = splitSubject(render(tplG, vars));
     const attachments: { filename: string; path?: string; content?: Buffer }[] = [];
     if (cl.guidelinesFileUrl) attachments.push({ filename: cl.guidelinesFileName || "Brand guidelines.pdf", path: cl.guidelinesFileUrl });
     if (cl.termsDocId) {
@@ -148,8 +150,8 @@ export async function sendGuidelines(clientId: ObjectId) {
  *  script: once per creator. deadline: at most once per creator per day (it can be re-sent as the date gets closer). */
 export type FollowEmail = "script" | "deadline";
 const FOLLOW = {
-  script: { field: "scriptReminderSentAt", tpl: "scriptReminderTemplate", label: "Script reminder" },
-  deadline: { field: "deadlineEmailAt", tpl: "deadlineTemplate", label: "Deadline email" },
+  script: { field: "scriptReminderSentAt", tpl: "scriptReminderTemplate", label: "Script reminder", dflt: DEFAULT_SCRIPT },
+  deadline: { field: "deadlineEmailAt", tpl: "deadlineTemplate", label: "Deadline email", dflt: DEFAULT_DEADLINE },
 } as const;
 
 /** Creators of this client who would get this email right now (the dynamic count on the button). */
@@ -172,11 +174,11 @@ export async function sendFollowEmail(clientId: ObjectId, kind: FollowEmail) {
   const { clients, creators, outreach } = await db();
   const f = FOLLOW[kind];
   const cl = await clients.findOne({ _id: clientId });
-  const tpl = cl?.[f.tpl];
-  if (!cl || !tpl) throw new Error(`save the ${f.label.toLowerCase()} for this client first`);
+  if (!cl) throw new Error("client not found");
+  const tpl = cl[f.tpl] || f.dflt;
   if (kind === "deadline" && daysLeft(cl.contentDeadline) === null) throw new Error("set the content deadline date for this client first");
   const dv = deadlineVars(cl.contentDeadline);
-  render(tpl, { name: "x", handle: "x", rate: "x", ...dv }); // fail early on a bad placeholder
+  render(tpl, { name: "x", handle: "x", rate: "x", brand: "x", ...dv }); // fail early on a bad placeholder
   const user = process.env.GMAIL_USER, pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error("GMAIL_USER / GMAIL_APP_PASSWORD are not set");
   const mail = nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
@@ -188,7 +190,7 @@ export async function sendFollowEmail(clientId: ObjectId, kind: FollowEmail) {
     if ((await sentToday("email")) >= cap) { res.capped = true; break; }
     const prev = c[f.field];
     if (!(await creators.findOneAndUpdate({ _id: c._id, ...followFilter(clientId, kind) }, { $set: { [f.field]: new Date() } }))) continue; // claimed by a double click
-    const { subject, body } = splitSubject(render(tpl, { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "", ...dv }));
+    const { subject, body } = splitSubject(render(tpl, { name: firstName(c.name), handle: c.igHandle ?? "", rate: c.agreedRate ?? "", brand: cl.name, ...dv }));
     try {
       await mail.sendMail({ from: user, to: c.email, subject, text: body });
       await outreach.insertOne({ creatorId: c._id!, clientId, channel: "email", kind, subject, message: body, status: "sent", createdAt: new Date(), sentAt: new Date() });

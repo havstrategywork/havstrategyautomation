@@ -143,9 +143,9 @@ export async function saveFollowEmailsAction(fd: FormData) {
     if (!cl) throw new Error("client not found");
     const script = String(fd.get("script") ?? "").trim(), deadline = String(fd.get("deadlineEmail") ?? "").trim(), date = String(fd.get("contentDeadline") ?? "").trim();
     if (date && daysLeft(date) === null) throw new Error("the content deadline must be a date");
-    const vars = { name: "Sam", handle: "sam", rate: "10k INR", ...deadlineVars(date || "2030-01-01") };
+    const vars = { name: "Sam", handle: "sam", rate: "10k INR", brand: cl.name, ...deadlineVars(date || "2030-01-01") };
     for (const [label, t] of [["Script reminder", script], ["Deadline email", deadline]] as const) {
-      try { render(t || "x", vars); } catch (e) { throw new Error(`${label}: ${(e as Error).message}. Only {{name}}, {{handle}}, {{rate}}, {{deadline}} and {{days}} can be filled in.`); }
+      try { render(t || "x", vars); } catch (e) { throw new Error(`${label}: ${(e as Error).message}. Only {{name}}, {{handle}}, {{rate}}, {{brand}}, {{deadline}} and {{days}} can be filled in.`); }
     }
     await upsertClient({ name: cl.name, scriptReminderTemplate: script, deadlineTemplate: deadline, contentDeadline: date });
     return "Script reminder and deadline email saved.";

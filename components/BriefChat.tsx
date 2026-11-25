@@ -24,7 +24,7 @@ const Q = [
 ];
 
 export default function BriefChat({ appUrl = "", apiKey = "", edit }: { appUrl?: string; apiKey?: string; edit?: { id: string; data: Draft } }) {
-  const [open, setOpen] = useState(!!edit);
+  const [open, setOpen] = useState(false);
   const [b, setB] = useState<Draft>(() => (edit ? { ...edit.data, step: Q.length } : blank()));
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);

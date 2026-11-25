@@ -10,6 +10,7 @@ import { approveBrief, archiveBrief, createLocalBatchAction, createSheetAction, 
 import { daysLabel, daysLeft } from "@/lib/dealrules";
 import { DeleteCampaignButton } from "./DeleteCampaignButton";
 import { GuidelinesUpload } from "./GuidelinesUpload";
+import { DEFAULT_DEADLINE, DEFAULT_GUIDELINES, DEFAULT_SCRIPT } from "@/lib/emailtemplates";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ const LABEL: Record<BriefDoc["status"], string> = {
 
 export default async function Campaigns({ searchParams }: { searchParams: Promise<{ err?: string; ok?: string; all?: string; page?: string }> }) {
   const { err, ok, all, page: pageParam } = await searchParams;
-  const { briefs, creators, clients, dealBatches } = await db();
+  const { briefs, creators, clients, dealBatches, outreach } = await db();
 
   // Client review: agreed deals waiting for a sheet, and the sheets already sent (last 60 days) with the client's answers.
   const waiting = await readyDeals();
@@ -44,6 +45,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
   const ids = list.flatMap((b) => b.shortlist.map((s) => s.creatorId));
   const people = new Map((await creators.find({ _id: { $in: ids } }).toArray()).map((c) => [String(c._id), c]));
   const cls = new Map((await clients.find({ _id: { $in: list.flatMap((b) => (b.clientId ? [b.clientId] : [])) } }).toArray()).map((c) => [String(c._id), c]));
+  const queuedIds = new Set((await outreach.find({ creatorId: { $in: ids }, channel: "ig", status: "queued" }).toArray()).map((o) => String(o.creatorId)));
   const order = (s: BriefDoc["status"]) => (s === "awaiting_approval" ? 0 : s === "failed" ? 1 : 2);
   list.sort((a, z) => order(a.status) - order(z.status));
 
@@ -132,20 +134,20 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                   {left !== null && <span className={`days-pill ${tone}`}>{daysLabel(left)}</span>}
                 </label>
               </div>
-              <label>Script reminder email (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} {"{{deadline}}"} {"{{days}}"} are filled in)
-                <textarea name="script" rows={6} defaultValue={cl?.scriptReminderTemplate ?? ""} placeholder={"Subject: Reminder: your script for [Brand] x @{{handle}}\n\nHi {{name}}, a quick reminder to share your script with us for approval. Content is due on {{deadline}} ({{days}} to go)."} />
+              <label>Script reminder email (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} {"{{brand}}"} {"{{deadline}}"} {"{{days}}"} are filled in)
+                <textarea name="script" rows={6} defaultValue={cl?.scriptReminderTemplate || DEFAULT_SCRIPT} placeholder={"Subject: Reminder: your script for [Brand] x @{{handle}}\n\nHi {{name}}, a quick reminder to share your script with us for approval. Content is due on {{deadline}} ({{days}} to go)."} />
               </label>
               <label>Deadline email (sent as the date gets closer; can go once a day)
-                <textarea name="deadlineEmail" rows={6} defaultValue={cl?.deadlineTemplate ?? ""} placeholder={"Subject: {{days}} left: [Brand] x @{{handle}} content deadline\n\nHi {{name}}, just a heads-up that your content is due on {{deadline}}, {{days}} from today."} />
+                <textarea name="deadlineEmail" rows={6} defaultValue={cl?.deadlineTemplate || DEFAULT_DEADLINE} placeholder={"Subject: {{days}} left: [Brand] x @{{handle}} content deadline\n\nHi {{name}}, just a heads-up that your content is due on {{deadline}}, {{days}} from today."} />
               </label>
               <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button formAction={saveFollowEmailsAction} className="ghost">Save emails</button>
-                <button formAction={sendScriptReminderAction} disabled={!toScript || !cl?.scriptReminderTemplate}
-                  title={!briefed.length ? "Send the guidelines first" : !cl?.scriptReminderTemplate ? "Save the script reminder email first" : !toScript ? "Everyone already got it" : undefined}>
+                <button formAction={sendScriptReminderAction} disabled={!toScript}
+                  title={!briefed.length ? "Send the guidelines first" : !toScript ? "Everyone already got it" : undefined}>
                   Send script reminder to {toScript} creator{toScript === 1 ? "" : "s"}
                 </button>
-                <button formAction={sendDeadlineAction} className={`deadline-btn ${tone}`} disabled={!toDeadline || !cl?.deadlineTemplate || left === null}
-                  title={!briefed.length ? "Send the guidelines first" : left === null ? "Set the content deadline first" : !cl?.deadlineTemplate ? "Save the deadline email first" : !toDeadline ? "Everyone got it in the last day" : undefined}>
+                <button formAction={sendDeadlineAction} className={`deadline-btn ${tone}`} disabled={!toDeadline || left === null}
+                  title={!briefed.length ? "Send the guidelines first" : left === null ? "Set the content deadline first" : !toDeadline ? "Everyone got it in the last day" : undefined}>
                   Send deadline email{left !== null ? ` · ${daysLabel(left)}` : ""} ({toDeadline})
                 </button>
               </div>
@@ -160,6 +162,17 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
         const pending = b.shortlist.filter((s) => !s.decision);
         const approved = b.shortlist.filter((s) => s.decision === "approved");
         const count = (tier: string, xs: typeof b.shortlist) => xs.filter((s) => (s.tier || tierOf(people.get(String(s.creatorId))?.followers ?? 0)) === tier).length;
+        // per-campaign stats: the creators approved for this campaign, by where they are now (status is the creator's own)
+        const mine = b.shortlist.filter((s) => s.decision === "approved").flatMap((s) => { const c = people.get(String(s.creatorId)); return c ? [c] : []; });
+        const st = (c: (typeof mine)[number]) => c.status ?? "New";
+        const contacted = mine.filter((c) => c.dmSentAt || st(c) !== "New");
+        const stat = (s: string) => mine.filter((c) => st(c) === s).length;
+        const replied = mine.filter((c) => ["Replied", "Negotiating", "Agreed", "Declined"].includes(st(c))).length;
+        const tiles: [string, number][] = [
+          ["Approved", mine.length], ["Queued", mine.filter((c) => !c.dmSentAt && queuedIds.has(String(c._id))).length], ["Contacted", contacted.length],
+          ["Replied", replied], ["Negotiating", stat("Negotiating")], ["Closed (agreed)", stat("Agreed")], ["Declined", stat("Declined")], ["No reply yet", contacted.length - replied],
+        ];
+        const rank = (c: (typeof mine)[number]) => ["Negotiating", "Agreed", "Replied", "DM Sent", "Declined", "New"].indexOf(st(c));
         return (
           <section key={String(b._id)} className="card campaign">
             <div className="row spread">
@@ -182,6 +195,36 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                 ))}</tbody>
               </table>
             </div>
+
+            {mine.length > 0 && (
+              <details style={{ marginTop: "1rem" }}>
+                <summary style={{ cursor: "pointer" }}><b>View stats</b> <span className="small muted">· {contacted.length} contacted · {stat("Negotiating")} negotiating · {stat("Agreed")} closed</span></summary>
+                <section>
+                <div className="tablewrap" style={{ marginTop: ".75rem" }}>
+                  <table>
+                    <thead><tr>{tiles.map(([k]) => <th key={k} className="num">{k}</th>)}</tr></thead>
+                    <tbody><tr>{tiles.map(([k, n]) => <td key={k} className="num"><b>{n}</b></td>)}</tr></tbody>
+                  </table>
+                </div>
+                <div className="tablewrap" style={{ marginTop: ".75rem" }}>
+                  <table>
+                    <thead><tr><th>Creator</th><th>Type</th><th>Status</th><th>DM sent</th><th className="num">They quoted</th><th className="num">Agreed</th><th>Last reply</th></tr></thead>
+                    <tbody>{[...mine].sort((a, z) => rank(a) - rank(z)).map((c) => (
+                      <tr key={String(c._id)}>
+                        <td><Link href={`/creators/${c._id}`}><b>{c.igHandle ? `@${c.igHandle}` : c.name}</b></Link></td>
+                        <td><span className="badge tier">{tierOf(c.followers ?? 0)}</span></td>
+                        <td><Badge s={st(c)} /></td>
+                        <td className="small">{c.dmSentAt ? ago(c.dmSentAt) : queuedIds.has(String(c._id)) ? "Queued" : "—"}</td>
+                        <td className="num">{c.quotedRate ?? "—"}</td>
+                        <td className="num">{c.agreedRate ?? "—"}</td>
+                        <td className="small muted">{c.response?.slice(0, 120)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                </section>
+              </details>
+            )}
 
             {b.status === "awaiting_approval" && (
               <form action={approveBrief} className="form" style={{ marginTop: "1.25rem" }}>
@@ -236,7 +279,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
               <form className="form" style={{ marginTop: "1rem" }}>
                 <input type="hidden" name="id" value={String(cl._id)} />
                 <label>Email to creators the client approves (first line: Subject: ...; {"{{name}}"} {"{{handle}}"} {"{{rate}}"} {"{{brand}}"} are filled in)
-                  <textarea name="guidelines" rows={8} defaultValue={cl.guidelinesTemplate ?? ""} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
+                  <textarea name="guidelines" rows={8} defaultValue={cl.guidelinesTemplate || DEFAULT_GUIDELINES} placeholder={"Subject: Our collab guidelines, [Brand] x @{{handle}}\n\nHi {{name}}, ..."} />
                 </label>
                 <label>Terms doc (Google Doc with {"{{name}}"}/{"{{brand}}"} placeholders; merged and attached as a personalized PDF per creator)
                   <input type="url" name="termsDocUrl" placeholder="https://docs.google.com/document/d/…" defaultValue={cl.termsDocId ? `https://docs.google.com/document/d/${cl.termsDocId}/edit` : ""} />

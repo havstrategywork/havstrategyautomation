@@ -1,8 +1,8 @@
-// Minimal Google Sheets/Drive/Docs client: service account JWT over plain REST (no googleapis dependency).
-// Env: GOOGLE_SA_JSON = the service account's JSON key (one line). Enable the Sheets API, Drive API and Docs API for its project.
-// The master Terms doc (see mergeDocToPdf) should live in a folder a REAL Google account owns, shared with the service account as Editor:
-// bare service accounts have ~0 Drive storage quota of their own, and files.copy inherits the source file's parent by default, so this just
-// works as long as the template doc wasn't created by the service account itself.
+// Minimal Google Sheets/Drive/Docs/Slides client: service account JWT over plain REST (no googleapis dependency).
+// Env: GOOGLE_SA_JSON = the service account's JSON key (one line). Enable the Sheets API, Drive API, Docs API and Slides API for its project.
+// The master Terms doc / report Slides deck (see mergeDocToPdf / mergeSlidesToPdf) should live in a folder a REAL Google account owns, shared
+// with the service account as Editor: bare service accounts have ~0 Drive storage quota of their own, and files.copy inherits the source
+// file's parent by default, so this just works as long as the template wasn't created by the service account itself.
 import { createSign } from "node:crypto";
 
 const b64 = (o: unknown) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64url");
@@ -12,7 +12,7 @@ async function token() {
   if (!raw) throw new Error("GOOGLE_SA_JSON is not set (service account key); see .env.example");
   const sa = JSON.parse(raw) as { client_email: string; private_key: string };
   const now = Math.floor(Date.now() / 1000);
-  const scope = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents";
+  const scope = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations";
   const head = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({ iss: sa.client_email, scope, aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })}`;
   const jwt = `${head}.${createSign("RSA-SHA256").update(head).sign(sa.private_key, "base64url")}`;
   const r = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }) });
@@ -52,6 +52,22 @@ export async function mergeDocToPdf(templateDocId: string, vars: Record<string, 
     return await exportFile(bearer, copyId, "application/pdf");
   } finally {
     await fetch(`https://www.googleapis.com/drive/v3/files/${copyId}`, { method: "DELETE", headers: { Authorization: bearer }, signal: AbortSignal.timeout(20000) }).catch(() => {});
+  }
+}
+
+/** Copies the master report Slides template, fills {{key}} text placeholders, exports it (pdf or pptx), then deletes the copy.
+ *  Same pattern as mergeDocToPdf, just hitting the Slides API. Native chart objects (bound to embedded sheet data) aren't touched by
+ *  replaceAllText -- if the template needs a live chart, swap the number for an insertImage request (e.g. a QuickChart URL) instead. */
+export async function mergeSlides(templateId: string, vars: Record<string, string>, mimeType = "application/pdf") {
+  const { bearer } = await token();
+  const copy = await call(bearer, `https://www.googleapis.com/drive/v3/files/${templateId}/copy`, "POST", {});
+  const copyId = copy.id as string;
+  try {
+    const requests = Object.entries(vars).map(([k, v]) => ({ replaceAllText: { containsText: { text: `{{${k}}}`, matchCase: true }, replaceText: v } }));
+    if (requests.length) await call(bearer, `https://slides.googleapis.com/v1/presentations/${copyId}:batchUpdate`, "POST", { requests });
+    return await exportFile(bearer, copyId, mimeType);
+  } finally {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${copyId}`, { method: "DELETE", headers: { Authorization: bearer } }).catch(() => {});
   }
 }
 
