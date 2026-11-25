@@ -39,7 +39,7 @@ async function initDemoDb(): Promise<DemoDb> {
 
 export function getDemoDb(): Promise<DemoDb> {
   if (!globalForDemoDb.__accesshubDemoDb) {
-    globalForDemoDb.__accesshubDemoDb = initDemoDb();
+    globalForDemoDb.__accesshubDemoDb = initDemoDb().catch((e) => { globalForDemoDb.__accesshubDemoDb = undefined; throw e; }); // a failed start is retried, not cached
   }
   return globalForDemoDb.__accesshubDemoDb;
 }

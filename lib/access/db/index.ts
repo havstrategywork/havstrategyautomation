@@ -16,8 +16,13 @@ export type GetDbResult = { ok: true; db: AnyDb } | { ok: false; error: string }
 
 export async function getDb(): Promise<GetDbResult> {
   if (getAppMode() === "demo") {
-    const db = await getDemoDb();
-    return { ok: true, db: db as unknown as AnyDb };
+    try {
+      const db = await getDemoDb();
+      return { ok: true, db: db as unknown as AnyDb };
+    } catch (e) {
+      // e.g. a read-only disk: report it instead of crashing the page
+      return { ok: false, error: `The embedded demo database could not start (${e instanceof Error ? e.message : "unknown error"}). Set APP_MODE=production and DATABASE_URL.` };
+    }
   }
   const result = getProductionDb();
   if (!result.ok) return result;

@@ -11,7 +11,10 @@ import { z } from "zod";
 export type AppMode = "demo" | "production";
 
 export function getAppMode(): AppMode {
-  return process.env.APP_MODE === "production" ? "production" : "demo";
+  // Demo mode keeps an embedded database on local disk, which cannot exist on Vercel (read-only, no persistence), so a hosted deploy is always
+  // production unless someone explicitly forces demo. (Production without DATABASE_URL shows a clear "database unavailable" message.)
+  if (process.env.APP_MODE === "demo") return "demo";
+  return process.env.APP_MODE === "production" || process.env.VERCEL ? "production" : "demo";
 }
 
 export function isDemoMode(): boolean {
