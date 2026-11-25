@@ -114,7 +114,9 @@ export type BriefDoc = {
 };
 
 // Dashboard login. Passwords are scrypt hashes; sessions store only a SHA-256 of the cookie token, so a DB leak can't be replayed.
-export type User = { _id?: ObjectId; username: string; passwordHash: string; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
+// role: admin (full access incl. Access Hub settings/team) | manager | member (read-only in Access Hub). A user with no role predates roles and is treated as admin.
+export type UserRole = "admin" | "manager" | "member";
+export type User = { _id?: ObjectId; username: string; email?: string; role?: UserRole; passwordHash: string; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
 export type Session = { _id?: ObjectId; tokenHash: string; userId: ObjectId; createdAt: Date; lastSeen: Date; expiresAt: Date; ip?: string; ua?: string };
 export type LoginAttempt = { _id: string; n: number; resetAt: Date }; // per-IP failed-login counter, expires by itself
 
@@ -133,6 +135,7 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
     await c.createIndex({ [f]: 1 }, { unique: true, name: `${f}_uniq`, partialFilterExpression: { [f]: { $type: "string" } } });
   }
   await d.collection("users").createIndex({ username: 1 }, { unique: true });
+  await d.collection("users").createIndex({ email: 1 }, { unique: true, partialFilterExpression: { email: { $type: "string" } } });
   await d.collection("sessions").createIndex({ tokenHash: 1 }, { unique: true });
   await d.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // expired sessions delete themselves
   await d.collection("loginAttempts").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });

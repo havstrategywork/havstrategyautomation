@@ -1,0 +1,131 @@
+@import "tailwindcss" source(none);
+/* Scan only the Access Hub files. Auto-detection would also watch .next/ and .data/ (rewritten on every request), which made the dev server rebuild and reload the page in a loop. */
+@source "../../../components/access";
+@source "../../../app/(hub)";
+@source "../../../lib/access";
+/* Access Hub only: loaded by the (hub) root layout, so it never touches the dashboard pages. */
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --surface: #f8fafc;
+  --muted: #64748b;
+  --border: #e2e8f0;
+
+  --primary: #5b4ef5;
+  --primary-hover: #4a3ee0;
+  --primary-foreground: #ffffff;
+
+  --success: #16a34a;
+  --success-bg: #f0fdf4;
+  --success-border: #bbf7d0;
+
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+
+  --destructive: #dc2626;
+  --destructive-bg: #fef2f2;
+  --destructive-border: #fecaca;
+
+  --info: #0369a1;
+  --info-bg: #f0f9ff;
+  --info-border: #bae6fd;
+
+  --radius: 0.625rem;
+  color-scheme: light;
+}
+
+/* Dark theme: the dashboard's palette, switched by the same html[data-theme] (or the system setting when none is saved). */
+:root[data-theme="dark"] {
+  --background: #131317;
+  --foreground: #f1f1f4;
+  --surface: #0d0d10;
+  --muted: #8e8e9a;
+  --border: #222228;
+  --primary: #9a90ff;
+  --primary-hover: #aca4ff;
+  --primary-foreground: #ffffff;
+  --success: #4ade80; --success-bg: #0f2418; --success-border: #1d4a2e;
+  --warning: #fbbf24; --warning-bg: #2c220b; --warning-border: #55410f;
+  --destructive: #f87171; --destructive-bg: #301414; --destructive-border: #5c2222;
+  --info: #60a5fa; --info-bg: #12203b; --info-border: #1f3a6b;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #131317;
+    --foreground: #f1f1f4;
+    --surface: #0d0d10;
+    --muted: #8e8e9a;
+    --border: #222228;
+    --primary: #9a90ff;
+    --primary-hover: #aca4ff;
+    --primary-foreground: #ffffff;
+    --success: #4ade80; --success-bg: #0f2418; --success-border: #1d4a2e;
+    --warning: #fbbf24; --warning-bg: #2c220b; --warning-border: #55410f;
+    --destructive: #f87171; --destructive-bg: #301414; --destructive-border: #5c2222;
+    --info: #60a5fa; --info-bg: #12203b; --info-border: #1f3a6b;
+    color-scheme: dark;
+  }
+}
+.hub-sun { display: none; }
+:root[data-theme="dark"] .hub-sun { display: block; }
+:root[data-theme="dark"] .hub-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hub-sun { display: block; }
+  :root:not([data-theme="light"]) .hub-moon { display: none; }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-border: var(--warning-border);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-bg: var(--destructive-bg);
+  --color-destructive-border: var(--destructive-border);
+
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-info-border: var(--info-border);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* Same type as the dashboard: Geist 14px body, Instrument Serif headings. */
+  font-family: var(--font-geist-sans), "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1 { font-family: var(--font-display), "Iowan Old Style", Georgia, serif; font-weight: 400; font-size: 2rem; line-height: 1.1; letter-spacing: -0.01em; }
+
+* {
+  border-color: var(--border);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}

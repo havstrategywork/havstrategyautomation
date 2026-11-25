@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
-import { db } from "./db";
+import { db, type UserRole } from "./db";
 import { hashPassword, verifyPassword } from "./password";
 
 export const COOKIE = "hav_session";
@@ -22,7 +22,7 @@ export async function sessionFor(token?: string) {
   if (!s) return null;
   if (now - +s.lastSeen > 60e3) await sessions.updateOne({ _id: s._id }, { $set: { lastSeen: new Date(now) } });
   const u = await users.findOne({ _id: s.userId });
-  return u ? { id: u._id!, username: u.username } : null;
+  return u ? { id: u._id!, username: u.username, email: u.email ?? null, role: (u.role ?? "admin") as UserRole } : null;
 }
 
 export const currentUser = async () => sessionFor((await cookies()).get(COOKIE)?.value); // only the root layout calls this
@@ -38,7 +38,7 @@ export async function login(username: string, password: string, ip: string, ua =
   const tries = await loginAttempts.findOne({ _id: ip, resetAt: { $gt: now } });
   if (tries && tries.n >= IP_MAX) return { error: "locked" };
 
-  const u = await users.findOne({ username });
+  const u = await users.findOne(username.includes("@") ? { $or: [{ username }, { email: username }] } : { username }); // sign in with the username or the email
   if (u?.lockedUntil && u.lockedUntil > now) return { error: "locked" };
   const ok = await verifyPassword(password, u?.passwordHash ?? (await (dummy ??= hashPassword("not-a-real-password"))));
 

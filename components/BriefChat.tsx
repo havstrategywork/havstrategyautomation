@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { TIERS } from "@/lib/fields";
 import Link from "next/link";
 import { buildPrompt, cleanRows, money, sheetIdFromUrl, tierRange, type Brief, type Row } from "@/lib/brief";
-import { submitBriefAction } from "@/app/campaigns/actions";
+import { submitBriefAction } from "@/app/(main)/campaigns/actions";
 
 const KEY = "briefDraft";
 type Draft = Brief & { step: number; followUp: string; sheetUrl: string; sent?: string };

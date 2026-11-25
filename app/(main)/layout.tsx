@@ -3,7 +3,9 @@ import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import NavLink from "@/components/NavLink";
 import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
 import BriefChat from "@/components/BriefChat";
-import { Icon, type IconName } from "@/components/ui";
+import { Icon } from "@/components/ui";
+import { HUB_NAV, hubNavFor, MAIN_NAV } from "@/lib/nav";
+import { toHubRole } from "@/lib/roles";
 import { currentUser } from "@/lib/session";
 
 // Self-hosted at build time by next/font (no runtime request to Google, so the CSP stays 'self').
@@ -12,12 +14,6 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono", display: 
 const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-display", display: "swap" });
 
 export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/logo.png" } };
-
-const NAV: { group: string; items: [string, string, IconName][] }[] = [
-  { group: "Overview", items: [["/", "Dashboard", "grid"], ["/campaigns", "Campaigns", "layers"], ["/inbox", "Inbox", "inbox"], ["/report", "Daily report", "pulse"]] },
-  { group: "Data", items: [["/creators", "Creators", "users"], ["/clients", "Clients", "briefcase"], ["/outreach", "Outreach", "send"]] },
-  { group: "System", items: [["/automation", "Automation", "bolt"]] },
-];
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const user = await currentUser(); // no session = bare page (the proxy only lets /login through)
@@ -30,10 +26,10 @@ export default async function Layout({ children }: { children: React.ReactNode }
             <aside className="side">
               <div className="brand"><div className="logo"><img src="/logo.png" alt="" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
               <nav aria-label="Main">
-                {NAV.map((g) => (
+                {[...MAIN_NAV, { ...HUB_NAV, items: hubNavFor(toHubRole(user.role)) }].map((g) => (
                   <div key={g.group} className="nav-group">
                     <div className="nav-label">{g.group}</div>
-                    {g.items.map(([href, label, icon]) => <NavLink key={href} href={href}><Icon name={icon} /><span>{label}</span></NavLink>)}
+                    {g.items.map(({ href, label, icon }) => <NavLink key={href} href={href}><Icon name={icon} /><span>{label}</span></NavLink>)}
                   </div>
                 ))}
               </nav>

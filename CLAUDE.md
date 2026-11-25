@@ -182,4 +182,16 @@ The dashboard "Worker" card shows the last run; if it says "No recent run" the s
 The UI needs a login (`proxy.ts`): DB-backed sessions (7 days, 24h idle, revocable on logout), scrypt-hashed password in the `users` collection, account lockout after 10
 wrong passwords (5 min, doubling, max 1h), per-IP limit, CSRF origin check, security headers (`next.config.ts`). `/api/*` is NOT behind the login: workers use the Bearer
 `API_KEY` (needs 8+ chars; the server refuses everything if it is unset). Create or reset a user (also signs them out everywhere and clears a lockout):
-`HAV_PW='long passphrase' node --env-file=.env.local --experimental-strip-types scripts/set-user.mjs <username>`
+`HAV_PW='long passphrase' [HAV_EMAIL=a@b.com] [HAV_ROLE=admin|manager|member] node --env-file=.env.local --experimental-strip-types scripts/set-user.mjs <username-or-email>`
+
+## Access Hub (same app, same login)
+The Havstrategy Access Hub (client OAuth onboarding for Meta Ads / Instagram / Google Ads) lives under `/access/*`, with its tabs in the sidebar below Automation
+(`lib/nav.ts`). **There is one login**: the dashboard's. Users have `username`, `email` and `role` (`admin` | `manager` | `member`; no role = admin, so old users keep
+full access). Sign in with the username or the email. `lib/access/auth/session.ts` mirrors the signed-in user into the Hub's Postgres (admin -> super_admin,
+manager -> account_manager, member -> team_member); the Hub's Team page adds/edits/removes the same dashboard users. Admins: `havstrategy.work@gmail.com`
+(create with `set-user.mjs`, `HAV_EMAIL`, role admin is the default).
+- Code: `app/(hub)/access/**` (own root layout + Tailwind, so its CSS never touches the dashboard), `app/api/access/**`, `lib/access/**`, `components/access/**`.
+  Its data is Postgres (Drizzle), not Mongo: `APP_MODE=demo` (default) = embedded PGlite in `.data/` (local only); `APP_MODE=production` = `DATABASE_URL` (Supabase/Postgres),
+  schema via `npm run access:migrate`. Vercel needs production mode. `ACCESS_DEMO_DATA=on` seeds five fake sample clients (off by default).
+- Public (no login): `/access/onboard/*` (the link we send clients), `/access/privacy|terms|security|contact|data-deletion`, and `/api/access/public|oauth|cron` (token / CRON_SECRET).
+  The OAuth redirect URI to register with Meta/Google is `<APP_URL>/api/access/oauth/<platform>/callback`. Other env vars: `.env.example`.

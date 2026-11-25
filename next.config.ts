@@ -6,7 +6,11 @@ const csp = [
 ].join("; ");
 
 export default {
-  serverExternalPackages: ["mongodb"],
+  // Access Hub: PGlite (embedded Postgres, local/demo only) loads WASM relative to its own file, which bundling breaks, so Next requires it natively.
+  serverExternalPackages: ["mongodb", "@electric-sql/pglite", "drizzle-orm"],
+  outputFileTracingIncludes: { "/**": ["./access-hub/drizzle/**"] },
+  // Tailwind is used only by the Access Hub pages (app/(hub)); the dashboard keeps its own plain CSS.
+  turbopack: { rules: { "*.css": { loaders: ["@tailwindcss/turbopack"], as: "*.css" } } },
   poweredByHeader: false,
   async headers() {
     return [{
