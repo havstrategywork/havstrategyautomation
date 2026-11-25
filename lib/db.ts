@@ -1,4 +1,7 @@
 import { MongoClient, ObjectId } from "mongodb";
+import type { Role } from "./roles";
+import type { MailStatus } from "./mail";
+import type { BotEdge, BotNode, Vars } from "./botflow";
 
 export type Creator = {
   _id?: ObjectId;
@@ -11,7 +14,7 @@ export type Creator = {
   platforms?: string[];
   collab: { count: number; rating: number; notes: string }; // rating 0-5
   notes: string; // "Notes (from bio)"
-  source: string; // how the row got in: "manual" | "claude-hunt" | "csv" | ...
+  source: string; // how the row got in: "manual" | "claude-hunt" | "creator-marketing-hub" | "csv" | ...
   createdAt: Date;
   // sheet columns. Tier and Times Suggested are derived (see lib/fields.ts), never stored.
   igCategory?: string;
@@ -19,7 +22,6 @@ export type Creator = {
   phone?: string;
   contactSource?: string; // where the email/phone came from
   suggestedVia?: ObjectId[]; // client ids
-  owner?: string; // which person's outreach this creator belongs to (see OWNER); set when a DM is queued
   status?: string; // one of STATUSES; missing = "New"
   dmSentAt?: Date;
   response?: string;
@@ -33,6 +35,7 @@ export type Creator = {
   declinedAt?: Date;
   undeliverable?: { reason: string; at: Date }; // Instagram said our DM can't be delivered (e.g. "can't receive your message"): no follow-ups, not shortlisted again
   needsHuman?: { reason: string; at: Date }; // Claude stops replying until a human resolves this
+  guidance?: string; // what the human told Claude to do next when handing the thread back; empty/absent = Claude decides. Cleared once anyone replies.
   // client review of agreed deals (see lib/deals.ts)
   dealClientId?: ObjectId; // which client this deal is for (from the first DM's client)
   batchId?: ObjectId; // the review sheet this creator is on
@@ -40,8 +43,8 @@ export type Creator = {
   clientNote?: string;
   decidedAt?: Date;
   guidelinesSentAt?: Date; // the guidelines email went out; later sheet changes are ignored
-  scriptReminderSentAt?: Date; // M2: script reminder email went out (once per creator)
-  deadlineSentAt?: Date; // M3: content-deadline reminder email went out (once per creator)
+  scriptReminderSentAt?: Date; // script reminder email went out (once per creator, only after guidelines)
+  deadlineEmailAt?: Date; // last deadline email (at most one per creator per day, only after guidelines)
 };
 export type Client = {
   _id?: ObjectId;
@@ -54,9 +57,12 @@ export type Client = {
   dmTemplate?: string; // the user's pasted message, sent word for word; {{name}} / {{handle}} are filled per creator
   sheetUrl?: string; // the client's own Google Sheet (from the brief): each review batch becomes a new "Content creators" tab in it
   guidelinesTemplate?: string; // email sent to creators the client said Yes to. First line "Subject: ..."; {{name}} {{handle}} {{rate}} are filled in
-  scriptReminderTemplate?: string; // M2: nudge to submit their script. Same placeholders as guidelinesTemplate
-  deadlineTemplate?: string; // M3: content-deadline reminder. Same placeholders, plus {{days}} (days left until contentDeadline)
-  contentDeadline?: string; // this campaign's content deadline, YYYY-MM-DD; drives the M3 "days remaining" display and the {{days}} placeholder
+  scriptReminderTemplate?: string; // sent after guidelines: reminds the creator to send their script. Same format; also {{deadline}} {{days}}
+  deadlineTemplate?: string; // sent after guidelines: content deadline reminder. Same format; also {{deadline}} {{days}}
+  contentDeadline?: string; // "YYYY-MM-DD": the date the creators' content is due; the dashboard shows the days remaining
+  guidelinesFileUrl?: string; // static brand guidelines/deck (PDF or PPTX), same for every creator; attached as-is to the guidelines email
+  guidelinesFileName?: string;
+  termsDocId?: string; // master Terms Google Doc id ({{name}}/{{brand}} placeholders); merged + exported to a personalized PDF per creator
   followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
   minFollowers: number;
@@ -88,7 +94,7 @@ export type Outreach = {
   creatorId: ObjectId;
   clientId?: ObjectId;
   channel: "ig" | "email";
-  kind?: "first" | "followup" | "guidelines" | "script-reminder" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator
+  kind?: "first" | "followup" | "guidelines" | "terms" | "script" | "deadline"; // missing = first DM. Follow-ups go in the existing thread, at most one per creator. "terms" = the per-creator Doc merge failed (see sendGuidelines)
   greet?: string; // name used in the greeting, reused by the follow-up
   subject?: string;
   message: string;
@@ -99,14 +105,15 @@ export type Outreach = {
 };
 
 // One review sheet sent to a client: the Agreed creators on it, and the Google Sheet they answer in.
-export type DealBatch = { _id?: ObjectId; clientId: ObjectId; sheetId: string; tab?: string; url: string; creatorIds: ObjectId[]; createdAt: Date; sharedAt?: Date /* a human gave it to the client */; answeredAt?: Date /* a human uploaded the client's answers */ };
+// sheetId/url are unset for a client with no sheetUrl: the review happens as a plain .xlsx download instead of a Google Sheet (see lib/deals.ts#createLocalBatch).
+export type DealBatch = { _id?: ObjectId; clientId: ObjectId; sheetId?: string; tab?: string; url?: string; creatorIds: ObjectId[]; createdAt: Date; sharedAt?: Date /* a human gave it to the client */; answeredAt?: Date /* a human uploaded the client's answers */ };
 
 // A campaign brief from the dashboard chat. Lifecycle (who moves it):
 //   new (dashboard) -> shortlisting (Cowork claims it) -> awaiting_approval (Cowork posted a shortlist)
 //   -> approved (you approve in the dashboard; the DMs are queued right then) ; "Find more" sends it back to new ; failed = Cowork gave up (note says why)
 export type ShortlistItem = { creatorId: ObjectId; tier: string; score?: number; why?: string; decision?: "approved" | "rejected" };
 export type BriefDoc = {
-  _id?: ObjectId; owner?: string; createdAt: Date; updatedAt: Date;
+  _id?: ObjectId; createdAt: Date; updatedAt: Date;
   status: "new" | "shortlisting" | "awaiting_approval" | "approved" | "failed" | "archived";
   client: string; products: { name: string; about: string }[]; rows: { tier: string; count: number; budget: number }[];
   currency: string; other: string; message: string; followUp: string; sheetUrl?: string;
@@ -114,11 +121,32 @@ export type BriefDoc = {
 };
 
 // Dashboard login. Passwords are scrypt hashes; sessions store only a SHA-256 of the cookie token, so a DB leak can't be replayed.
-// role: admin (full access incl. Access Hub settings/team) | manager | member (read-only in Access Hub). A user with no role predates roles and is treated as admin.
-export type UserRole = "admin" | "manager" | "member";
-export type User = { _id?: ObjectId; username: string; email?: string; role?: UserRole; passwordHash: string; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
+export type User = { _id?: ObjectId; username: string; email?: string; role?: Role; passwordHash: string; passwordChangedAt?: Date; fails?: number; lockCount?: number; lockedUntil?: Date; createdAt: Date };
 export type Session = { _id?: ObjectId; tokenHash: string; userId: ObjectId; createdAt: Date; lastSeen: Date; expiresAt: Date; ip?: string; ua?: string };
 export type LoginAttempt = { _id: string; n: number; resetAt: Date }; // per-IP failed-login counter, expires by itself
+
+// Email agent records: one row per conversation (see lib/mail.ts), plus one per finished run.
+export type MailThread = {
+  _id?: ObjectId; key: string; mailbox: string; email: string; name?: string; subject: string; category?: string;
+  status: MailStatus; price?: string; note?: string; url?: string; followUps: number; lastFollowUpAt?: Date; createdAt: Date; updatedAt: Date;
+};
+export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
+
+// Social-media dashboard. An org groups the Instagram accounts of one client; accounts are the Meta connections below.
+export type Org = { _id?: ObjectId; name: string; createdAt: Date };
+
+// Chat bots. A connection = one Instagram account the org's client approved through Meta login (token stored encrypted). A flow belongs to one connection.
+export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
+export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: string; enabled: boolean; nodes: BotNode[]; edges: BotEdge[]; createdAt: Date; updatedAt: Date };
+export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
+export type Onboarding = {
+  _id?: ObjectId; at: Date; services: string[]; answers: Record<string, string>; ipHash?: string;
+  sheet?: { ok: boolean; at: Date; error?: string };
+  notion?: { ok: boolean; at: Date; error?: string; url?: string }; // the condensed brief page (lib/notionBrief.ts)
+}; // a public onboarding-form submission (lib/onboarding.ts)
+// dashboard settings, one doc per area: _id "onboardingSheet" (where onboarding answers are pushed) or "onboardingNotion" (where the brief page is created)
+export type Setting = { _id: string; sheetUrl?: string; sheetId?: string; sheetName?: string; tab?: string; pageId?: string; pageUrl?: string; pageTitle?: string; updatedAt: Date; by?: string };
+export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
 
 // Reuse one connection across requests and dev hot reloads. A FAILED attempt is forgotten, so the next request retries
 // (e.g. after a DNS blip or an .env fix) instead of replaying the same error until someone restarts the server.
@@ -140,6 +168,12 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // expired sessions delete themselves
   await d.collection("loginAttempts").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });
   await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
+  await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
+  await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
+  await d.collection("botConnections").createIndex({ igId: 1 }, { unique: true });
+  await d.collection("botFlows").createIndex({ igId: 1, createdAt: 1 });
+  await d.collection("botSessions").createIndex({ at: 1 }, { expireAfterSeconds: 24 * 3600 });
+  await d.collection("botSeen").createIndex({ at: 1 }, { expireAfterSeconds: 2 * 24 * 3600 });
 }
 
 export async function db() {
@@ -157,6 +191,15 @@ export async function db() {
     loginAttempts: d.collection<LoginAttempt>("loginAttempts"),
     briefs: d.collection<BriefDoc>("briefs"),
     dealBatches: d.collection<DealBatch>("dealBatches"),
+    mailThreads: d.collection<MailThread>("mailThreads"),
+    mailRuns: d.collection<MailRun>("mailRuns"),
+    orgs: d.collection<Org>("orgs"),
+    botConnections: d.collection<BotConnection>("botConnections"),
+    botFlows: d.collection<BotFlowDoc>("botFlows"),
+    botSessions: d.collection<BotSession>("botSessions"),
+    botSeen: d.collection<BotSeen>("botSeen"),
+    onboarding: d.collection<Onboarding>("onboarding"),
+    settings: d.collection<Setting>("settings"),
   };
 }
 
@@ -172,11 +215,3 @@ export async function sentToday(channel: "ig" | "email") {
 // Enforced server-side in /api/outreach/next, and /api/outreach/:id/sent, so a prompt can't bypass it.
 const allowList = (v?: string) => (v ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
 export const igAllowed = (handle?: string) => { const l = allowList(process.env.IG_ALLOWLIST); return !l.length || (!!handle && l.includes(handle.toLowerCase())); };
-// Ownership guard (two people share the creator database, even for the same client). If OWNER is set (e.g. OWNER=akshit), this app
-// only touches creators whose `owner` is that name. Queueing a DM claims an unowned creator for OWNER; someone else's creator is refused.
-// Enforced server-side in outreach/messages/conversations routes, so a prompt can't bypass it.
-export const ownerName = () => (process.env.OWNER ?? "").trim().toLowerCase();
-export async function inScope(c?: { owner?: string } | null, allowUnowned = false) {
-  const me = ownerName();
-  return !me || (c?.owner ? c.owner === me : allowUnowned);
-}

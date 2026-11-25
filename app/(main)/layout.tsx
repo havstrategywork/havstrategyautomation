@@ -4,16 +4,17 @@ import NavLink from "@/components/NavLink";
 import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
 import BriefChat from "@/components/BriefChat";
 import { Icon } from "@/components/ui";
-import { HUB_NAV, hubNavFor, MAIN_NAV } from "@/lib/nav";
-import { toHubRole } from "@/lib/roles";
+import { navFor } from "@/lib/nav";
+import MuiProviders from "@/components/mui/Providers";
 import { currentUser } from "@/lib/session";
+import { canView, hasApiKey, hubRoleOf } from "@/lib/roles";
 
 // Self-hosted at build time by next/font (no runtime request to Google, so the CSP stays 'self').
 const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 const display = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-display", display: "swap" });
 
-export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/logo.png" } };
+export const metadata = { title: "Havstrategy · Outreach", icons: { icon: "/havstrategy-logo.png", shortcut: "/havstrategy-logo.png" } };
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const user = await currentUser(); // no session = bare page (the proxy only lets /login through)
@@ -21,12 +22,13 @@ export default async function Layout({ children }: { children: React.ReactNode }
     <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable} ${display.variable}`}>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
+        <MuiProviders>
         {!user ? children : (
           <div className="shell">
             <aside className="side">
-              <div className="brand"><div className="logo"><img src="/logo.png" alt="" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
+              <div className="brand"><div className="logo"><img src="/havstrategy-logo.png" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
               <nav aria-label="Main">
-                {[...MAIN_NAV, { ...HUB_NAV, items: hubNavFor(toHubRole(user.role)) }].map((g) => (
+                {navFor((href) => canView(user.role, href), hubRoleOf(user.role)).map((g) => (
                   <div key={g.group} className="nav-group">
                     <div className="nav-label">{g.group}</div>
                     {g.items.map(({ href, label, icon }) => <NavLink key={href} href={href}><Icon name={icon} /><span>{label}</span></NavLink>)}
@@ -35,7 +37,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
               </nav>
               <div className="side-foot">
                 <span className="me" aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
-                <div className="user"><b>{user.username}</b><small>Signed in</small></div>
+                <div className="user"><b>{user.username}</b><small>{user.role}</small></div>
                 <ThemeToggle />
                 <form method="post" action="/login/logout">
                   <button className="icon-btn" aria-label="Log out" title="Log out"><Icon name="logout" /></button>
@@ -43,9 +45,11 @@ export default async function Layout({ children }: { children: React.ReactNode }
               </div>
             </aside>
             <main className="main">{children}</main>
-            <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />
+            {/* the chat carries the API key, so only roles that may use the outreach API get it */}
+            {hasApiKey(user.role) && <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />}
           </div>
         )}
+        </MuiProviders>
       </body>
     </html>
   );

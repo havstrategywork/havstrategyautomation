@@ -13,7 +13,7 @@ import { useToast } from "@/components/access/ui/toast";
 import { apiFetch } from "@/lib/access/api-client";
 import { titleCase } from "@/lib/access/utils";
 import { PRODUCT_SHORT_NAME } from "@/lib/access/branding";
-import { ROLES } from "@/lib/access/types";
+const ROLES = ["super_admin", "account_manager"] as const; // the Hub roles a dashboard login can have (admin / outreach)
 
 interface Member {
   userId: string;
@@ -29,7 +29,7 @@ export default function TeamPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("team_member");
+  const [role, setRole] = useState<string>("account_manager");
   const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async () => {

@@ -4,7 +4,7 @@ import { isResponse, withCapability } from "@/lib/access/api/guard";
 import { parseBody } from "@/lib/access/api/validate";
 import { updateMemberRoleSchema } from "@/lib/access/validation/auth";
 import { getMembership, getUserById, removeMember, updateMemberRole } from "@/lib/access/db/queries/users";
-import { toMainRole } from "@/lib/roles";
+import { roleOfHub } from "@/lib/roles";
 import { logAudit } from "@/lib/access/audit";
 
 // The dashboard user (MongoDB) is the source of truth for a person's role and login; the Hub membership just mirrors it.
@@ -26,7 +26,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
   if (userId === ctx.userId) return NextResponse.json({ error: "You cannot change your own role." }, { status: 400 });
 
   const u = await mainUser(target.email);
-  if (u) await (await mongo()).users.updateOne({ _id: u._id }, { $set: { role: toMainRole(parsed.data.role) } });
+  if (u) await (await mongo()).users.updateOne({ _id: u._id }, { $set: { role: roleOfHub(parsed.data.role) } });
   await updateMemberRole(db, ctx.organizationId, userId, parsed.data.role);
   await logAudit(db, { organizationId: ctx.organizationId, actorId: ctx.userId, actorType: "agency_user", action: "team.role_updated", metadata: { targetUserId: userId, role: parsed.data.role } });
   return NextResponse.json({ ok: true });

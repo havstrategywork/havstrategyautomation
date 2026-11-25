@@ -4,9 +4,10 @@
 // A copy-paste Cowork prompt is still offered as a manual fallback. The draft is kept in localStorage.
 import { useEffect, useRef, useState } from "react";
 import { TIERS } from "@/lib/fields";
+import Select from "@/components/mui/Select";
 import Link from "next/link";
 import { buildPrompt, cleanRows, money, sheetIdFromUrl, tierRange, type Brief, type Row } from "@/lib/brief";
-import { submitBriefAction } from "@/app/(main)/campaigns/actions";
+import { editBriefAction, submitBriefAction } from "@/app/(main)/campaigns/actions";
 
 const KEY = "briefDraft";
 type Draft = Brief & { step: number; followUp: string; sheetUrl: string; sent?: string };
@@ -22,16 +23,16 @@ const Q = [
   "Do you have the client's Google Sheet link? When creators are agreed, we add a new \"Content creators\" tab to it (share it with edit access first). Skip and we'll make a fresh sheet.",
 ];
 
-export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: string }) {
+export default function BriefChat({ appUrl = "", apiKey = "", edit }: { appUrl?: string; apiKey?: string; edit?: { id: string; data: Draft } }) {
   const [open, setOpen] = useState(false);
-  const [b, setB] = useState(blank);
+  const [b, setB] = useState<Draft>(() => (edit ? { ...edit.data, step: Q.length } : blank()));
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { try { const s = localStorage.getItem(KEY); if (s) setB({ ...blank(), ...JSON.parse(s) }); } catch {} }, []);
-  useEffect(() => { try { localStorage.setItem(KEY, JSON.stringify(b)); } catch {} }, [b]);
+  useEffect(() => { if (!edit) try { const s = localStorage.getItem(KEY); if (s) setB({ ...blank(), ...JSON.parse(s) }); } catch {} }, [edit]);
+  useEffect(() => { if (!edit) try { localStorage.setItem(KEY, JSON.stringify(b)); } catch {} }, [b, edit]);
   useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [b.step, open]);
 
   const set = (p: Partial<typeof b>) => setB((x) => ({ ...x, ...p }));
@@ -52,9 +53,11 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
   ][i];
   const submit = async () => {
     setBusy(true); setErr("");
-    const r = await submitBriefAction(b).catch((e) => ({ ok: false as const, error: String(e?.message ?? e) }));
+    const r = edit
+      ? await editBriefAction(edit.id, b).catch((e) => ({ ok: false as const, error: String(e?.message ?? e) }))
+      : await submitBriefAction(b).catch((e) => ({ ok: false as const, error: String(e?.message ?? e) }));
     setBusy(false);
-    if (r.ok) set({ sent: r.id }); else setErr(r.error);
+    if (r.ok) set({ sent: "ok" }); else setErr(r.error);
   };
   const prompt = b.step >= Q.length ? buildPrompt(b, appUrl || (typeof location === "undefined" ? "" : location.origin), apiKey) : "";
   const copy = async () => {
@@ -65,13 +68,15 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
 
   return (
     <>
-      {!open && <button className="chat-fab" onClick={() => setOpen(true)} aria-label="Open campaign brief chat"><Spark /> New brief</button>}
+      {!open && (edit
+        ? <button className="ghost small-btn" onClick={() => setOpen(true)}>Edit details</button>
+        : <button className="chat-fab" onClick={() => setOpen(true)} aria-label="Open campaign brief chat"><Spark /> New brief</button>)}
       {open && (
         <section className="chat-panel" role="dialog" aria-label="Campaign brief">
           <header className="chat-head">
-            <div className="row" style={{ gap: ".55rem" }}><span className="chat-dot"><Spark /></span><div><b>Campaign brief</b><small>Sent to the automation when you're done</small></div></div>
+            <div className="row" style={{ gap: ".55rem" }}><span className="chat-dot"><Spark /></span><div><b>{edit ? "Edit campaign details" : "Campaign brief"}</b><small>{edit ? "Saved straight to this campaign" : "Sent to the automation when you're done"}</small></div></div>
             <div className="row" style={{ gap: ".3rem" }}>
-              <button className="icon-btn" title="Start over" aria-label="Start over" onClick={() => { setB(blank()); setCopied(false); setErr(""); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></svg></button>
+              {!edit && <button className="icon-btn" title="Start over" aria-label="Start over" onClick={() => { setB(blank()); setCopied(false); setErr(""); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" /></svg></button>}
               <button className="icon-btn" title="Close" aria-label="Close" onClick={() => setOpen(false)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
             </div>
           </header>
@@ -111,9 +116,7 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
                     <tbody>
                       {b.rows.map((r, i) => (
                         <tr key={i}>
-                          <td><select value={r.tier} onChange={(e) => setRow(i, { tier: e.target.value })}>
-                            {TIERS.map((t) => <option key={t} value={t} disabled={used(i).has(t)}>{t} ({tierRange(t)})</option>)}
-                          </select></td>
+                          <td><Select value={r.tier} onChange={(v) => setRow(i, { tier: v })} ariaLabel="Creator type" options={TIERS.map((t) => ({ value: t, label: `${t} (${tierRange(t)})`, disabled: used(i).has(t) }))} /></td>
                           <td><input type="number" min={1} max={500} value={r.count || ""} onChange={(e) => setRow(i, { count: Math.max(0, Math.floor(+e.target.value)) })} /></td>
                           <td><input type="number" min={0} step={500} value={r.budget || ""} onChange={(e) => setRow(i, { budget: Math.max(0, +e.target.value) })} /></td>
                           <td>{b.rows.length > 1 && <button className="icon-btn" aria-label="Remove row" onClick={() => set({ rows: b.rows.filter((_, j) => j !== i) })}>×</button>}</td>
@@ -125,7 +128,7 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
                 </div>
                 <div className="row spread">
                   <button className="ghost small-btn" disabled={b.rows.length >= TIERS.length} onClick={() => set({ rows: [...b.rows, { tier: TIERS.find((t) => !b.rows.some((r) => r.tier === t))!, count: 1, budget: 0 }] })}>+ Add row</button>
-                  <label className="cur">Currency<select value={b.currency} onChange={(e) => set({ currency: e.target.value })}>{CURRENCIES.map((c) => <option key={c}>{c}</option>)}</select></label>
+                  <span className="cur">Currency<Select compact value={b.currency} onChange={(v) => set({ currency: v })} ariaLabel="Currency" options={[...CURRENCIES]} /></span>
                 </div>
                 {rows.length !== b.rows.length && <div className="small muted">Every row needs a count and a budget.</div>}
               </div>
@@ -153,20 +156,28 @@ export default function BriefChat({ appUrl, apiKey }: { appUrl: string; apiKey: 
 
             {b.step >= Q.length && !b.sent && (
               <>
-                <div className="bubble bot">All set. Send it to the automation: Cowork picks it up on its next scheduled run, finds creators, and you approve the shortlist on the Campaigns page before anything is sent. To change an answer, click it above.</div>
+                <div className="bubble bot">{edit ? "Review the changes, then save. Already-sent DMs and anything already agreed keep what they were sent; only new work uses the updated numbers. To change an answer, click it above." : "All set. Send it to the automation: Cowork picks it up on its next scheduled run, finds creators, and you approve the shortlist on the Campaigns page before anything is sent. To change an answer, click it above."}</div>
                 {err && <div className="notice" role="alert" style={{ margin: 0, borderLeftColor: "var(--bad)" }}>{err}</div>}
                 <div className="row spread">
                   <button className="ghost small-btn" onClick={() => set({ step: Q.length - 1 })}>Back</button>
-                  <button className="small-btn" disabled={busy} onClick={submit}>{busy ? "Sending…" : "Send to automation"}</button>
+                  <button className="small-btn" disabled={busy} onClick={submit}>{busy ? (edit ? "Saving…" : "Sending…") : (edit ? "Save changes" : "Send to automation")}</button>
                 </div>
-                <details>
-                  <summary className="small">Or copy a prompt to run it by hand in Cowork</summary>
-                  <textarea id="brief-out" className="prompt-out" rows={10} value={prompt} readOnly onFocus={(e) => e.currentTarget.select()} style={{ marginTop: ".5rem" }} />
-                  <div className="row" style={{ justifyContent: "flex-end", marginTop: ".5rem" }}><button className="ghost small-btn" onClick={copy}>{copied ? "Copied ✓" : "Copy prompt"}</button></div>
-                </details>
+                {!edit && (
+                  <details>
+                    <summary className="small">Or copy a prompt to run it by hand in Cowork</summary>
+                    <textarea id="brief-out" className="prompt-out" rows={10} value={prompt} readOnly onFocus={(e) => e.currentTarget.select()} style={{ marginTop: ".5rem" }} />
+                    <div className="row" style={{ justifyContent: "flex-end", marginTop: ".5rem" }}><button className="ghost small-btn" onClick={copy}>{copied ? "Copied ✓" : "Copy prompt"}</button></div>
+                  </details>
+                )}
               </>
             )}
-            {b.sent && (
+            {b.sent && edit && (
+              <>
+                <div className="bubble bot">Saved ✓</div>
+                <div className="row spread"><span /><button className="small-btn" onClick={() => setOpen(false)}>Close</button></div>
+              </>
+            )}
+            {b.sent && !edit && (
               <>
                 <div className="bubble bot">Sent ✓ <b>{b.client}</b> is on the Campaigns page. You&apos;ll get a notification when its shortlist is ready to approve.</div>
                 <div className="row spread">

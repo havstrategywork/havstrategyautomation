@@ -35,3 +35,18 @@ export const emailAllowed = (email: string, list = "") => {
   const l = list.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   return !l.length || l.includes(email.trim().toLowerCase());
 };
+
+/** Whole days from today (IST) to a "YYYY-MM-DD" deadline: 0 = due today, negative = overdue. null if the date is missing or bad. */
+export function daysLeft(deadline: string | undefined, now = new Date()) {
+  const m = deadline?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const today = new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10); // IST date
+  return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+}
+
+/** "5 days left" / "1 day left" / "due today" / "2 days overdue". */
+export function daysLabel(d: number) {
+  if (d === 0) return "due today";
+  const n = Math.abs(d), s = `${n} day${n === 1 ? "" : "s"}`;
+  return d > 0 ? `${s} left` : `${s} overdue`;
+}

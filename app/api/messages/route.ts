@@ -1,5 +1,5 @@
 import { unauthorized } from "@/lib/auth";
-import { db, igAllowed, inScope } from "@/lib/db";
+import { db, igAllowed } from "@/lib/db";
 import { cancelFollowups } from "@/lib/outreach";
 import { fmtMoney, overCeiling, parseMoney } from "@/lib/money";
 import { alreadyLogged, ceilingFor, findCreator, nextAt } from "@/lib/threads";
@@ -19,7 +19,6 @@ export async function POST(req: Request) {
   const c = await findCreator(b);
   if (!c) return Response.json({ error: "creator not found" }, { status: 404 });
   if (!text) return Response.json({ error: "text required" }, { status: 400 });
-  if (!(await inScope(c))) return Response.json({ error: "creator belongs to another person (OWNER); do not open or message this thread" }, { status: 403 });
   const { messages, creators } = await db();
 
   if (b.direction === "in") {
@@ -36,6 +35,7 @@ export async function POST(req: Request) {
     // Claude's own sent replies come back through here too (the poster can't tell them apart); the duplicate check absorbs them.
     if (await alreadyLogged(c._id!, "out", text)) return Response.json({ ok: true, duplicate: true });
     await messages.insertOne({ creatorId: c._id!, direction: "out", by: "human", text, at: await nextAt(c._id!), status: "sent" });
+    await creators.updateOne({ _id: c._id! }, { $unset: { guidance: "" } });
     const cancelled = await messages.updateMany({ creatorId: c._id!, direction: "out", status: "queued" }, { $set: { status: "failed", error: "a human replied first" } });
     return Response.json({ ok: true, cancelledQueuedReplies: cancelled.modifiedCount });
   }
@@ -53,5 +53,6 @@ export async function POST(req: Request) {
     price = fmtMoney(parsed);
   }
   const r = await messages.insertOne({ creatorId: c._id!, direction: "out", by: "claude", text, at: await nextAt(c._id!), status: "queued", ...(price && { price }) });
+  await creators.updateOne({ _id: c._id! }, { $unset: { guidance: "" } }); // guidance is used up once Claude has replied
   return Response.json({ ok: true, id: r.insertedId });
 }

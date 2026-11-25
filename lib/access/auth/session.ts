@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { db as mongo, type UserRole } from "@/lib/db";
+import { db as mongo } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import { getDb, type AnyDb } from "@/lib/access/db";
 import * as schema from "@/lib/access/db/schema";
-import { toHubRole } from "@/lib/roles";
+import { hubRoleOf, type Role as MainRole } from "@/lib/roles";
 import type { Role } from "@/lib/access/types";
 
 /**
@@ -37,8 +37,9 @@ export async function ensureOrganization(db: AnyDb) {
 }
 
 /** Finds or creates the Hub user + membership for a dashboard user and makes the role match. Returns the Hub user id. */
-export async function ensureHubUser(db: AnyDb, org: { id: string }, u: { username: string; email?: string | null; role?: UserRole }) {
-  const email = hubEmail(u), role = toHubRole(u.role);
+export async function ensureHubUser(db: AnyDb, org: { id: string }, u: { username: string; email?: string | null; role?: MainRole }) {
+  const email = hubEmail(u), role = hubRoleOf(u.role ?? "admin");
+  if (!role) return null; // mail / social logins have no Access Hub access
   let [user] = await db.select().from(schema.users).where(eq(schema.users.email, email)).limit(1);
   if (!user) {
     const id = randomUUID();
@@ -56,7 +57,7 @@ export async function ensureHubUser(db: AnyDb, org: { id: string }, u: { usernam
 export async function syncAllUsers(db: AnyDb) {
   const org = await ensureOrganization(db);
   const { users } = await mongo();
-  for (const u of await users.find({}).toArray()) await ensureHubUser(db, org, u);
+  for (const u of await users.find({}).toArray()) await ensureHubUser(db, org, u); // skips logins without Hub access
 }
 
 const seen = new Map<string, AuthContext>(); // per process: skips the Postgres round trips while nothing about the user changed
@@ -72,7 +73,9 @@ export async function getCurrentSession(): Promise<AuthContext | null> {
   const dbResult = await getDb();
   if (!dbResult.ok) return null;
   const org = await ensureOrganization(dbResult.db);
-  const { user, role } = await ensureHubUser(dbResult.db, org, { username: u.username, email: u.email, role: u.role });
+  const hub = await ensureHubUser(dbResult.db, org, { username: u.username, email: u.email, role: u.role });
+  if (!hub) return null;
+  const { user, role } = hub;
   const ctx: AuthContext = { sessionId: String(u.id), userId: user.id, name: user.name, email: user.email, organizationId: org.id, organizationName: org.organizationName, role };
   if (seen.size > 200) seen.clear();
   seen.set(key, ctx);

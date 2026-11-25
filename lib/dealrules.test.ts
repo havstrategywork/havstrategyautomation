@@ -27,3 +27,19 @@ assert.equal(emailAllowed("a@x.com", "none"), false); // test mode, nobody
 assert.equal(emailAllowed("A@x.com", "me@y.com, a@x.com"), true);
 assert.equal(emailAllowed("b@x.com", "a@x.com"), false);
 console.log("dealrules ok");
+
+// days remaining to the content deadline (IST)
+{
+  const { daysLeft, daysLabel } = await import("./dealrules.ts");
+  const now = new Date("2026-11-19T10:00:00Z"); // 15:30 IST, 19 Nov
+  assert.equal(daysLeft("2026-11-24", now), 5);
+  assert.equal(daysLeft("2026-11-19", now), 0);
+  assert.equal(daysLeft("2026-11-17", now), -2);
+  assert.equal(daysLeft("2026-11-20", new Date("2026-11-19T19:00:00Z")), 0, "after IST midnight it's already the 20th");
+  assert.equal(daysLeft("", now), null);
+  assert.equal(daysLeft("tomorrow", now), null);
+  assert.equal(daysLabel(5), "5 days left");
+  assert.equal(daysLabel(1), "1 day left");
+  assert.equal(daysLabel(0), "due today");
+  assert.equal(daysLabel(-2), "2 days overdue");
+}

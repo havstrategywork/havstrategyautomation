@@ -6,7 +6,7 @@ import { parseBody } from "@/lib/access/api/validate";
 import { createTeamMemberSchema } from "@/lib/access/validation/auth";
 import { listOrganizationMembers } from "@/lib/access/db/queries/users";
 import { ensureHubUser, ensureOrganization, syncAllUsers } from "@/lib/access/auth/session";
-import { toMainRole } from "@/lib/roles";
+import { roleOfHub } from "@/lib/roles";
 import { logAudit } from "@/lib/access/audit";
 
 /** Any signed-in role can read the roster (needed for the "assigned manager" picker); only manage_team can write it. */
@@ -30,9 +30,10 @@ export async function POST(req: Request) {
 
   const { users } = await mongo();
   if (await users.findOne({ $or: [{ username: input.email }, { email: input.email }] })) return NextResponse.json({ error: "A user with this email already exists." }, { status: 409 });
-  await users.insertOne({ username: input.email, email: input.email, role: toMainRole(input.role), passwordHash: await hashPassword(input.password), createdAt: new Date() });
+  await users.insertOne({ username: input.email, email: input.email, role: roleOfHub(input.role), passwordHash: await hashPassword(input.password), createdAt: new Date() });
   const org = await ensureOrganization(db);
-  const { user } = await ensureHubUser(db, org, { username: input.email, email: input.email, role: toMainRole(input.role) });
+  const hub = await ensureHubUser(db, org, { username: input.email, email: input.email, role: roleOfHub(input.role) });
+  const user = hub!.user;
 
   await logAudit(db, { organizationId: ctx.organizationId, actorId: ctx.userId, actorType: "agency_user", action: "team.member_added", metadata: { role: input.role } });
   return NextResponse.json({ id: user.id }, { status: 201 });

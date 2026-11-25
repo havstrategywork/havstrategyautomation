@@ -23,8 +23,15 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 
 ## Hunting new creators
 1. `GET /api/clients` to see what's wanted.
-2. Use web search / Claude in Chrome to find creators matching the niche. For each, collect: IG handle, follower count, rough engagement rate, niches, and (as contact info only) a **public** email if shown (bio, linked site, Linktree, YouTube About page). Never guess or fabricate emails or numbers. Leave a field out if you can't verify it.
-3. `POST /api/creators` with `source: "claude-hunt"` and short `notes` on why they fit.
+2. **Prefer Meta's Creator Marketing Hub** (`business.facebook.com/creator_marketing_hub/creator_discovery`, via Claude in Chrome, logged into the
+   brand's Meta Business account) when that tab is open: it's Meta's own creator-discovery tool, so followers/views/the "Interactions" % are real
+   numbers straight from Meta, not guesses. Switch the business selector (top right) to the right client first if more than one is connected. Use
+   its filters (category, follower range, country) to match the requirement, open each card for the IG handle, and read followers/engagement rate
+   straight off the page. Fall back to web search / open Chrome for niches or handles it doesn't surface. Either way, for each creator collect: IG
+   handle, follower count, engagement rate, niches, and (as contact info only) a **public** email if shown (bio, linked site, Linktree, YouTube About
+   page). Never guess or fabricate emails or numbers. Leave a field out if you can't verify it. Don't use the Hub's own "Contact" button — creators
+   still go through our own queue (`POST /api/outreach` / the hunt-then-search flow below), so caps, templates and no-double-contact rules apply.
+3. `POST /api/creators` with `source: "claude-hunt"` (or `"creator-marketing-hub"` when found there) and short `notes` on why they fit.
 
 ## Sending IG DMs (Claude in Chrome)
 1. `GET /api/outreach/next`. If `remaining` is 0, stop.
@@ -90,7 +97,7 @@ Never lower `minScore` or drop the niche to make the numbers look better. Never 
 Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min). The app stores the thread; Chrome only reads and types.
 
 **Each run:**
-1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (max 15 per run; live conversations first, then whoever was read longest ago).
+1. `GET /api/conversations?view=watch`: the ONLY creators whose Instagram threads you may open (`?limit=15`, once per run; live conversations first, then whoever was read longest ago; each call rotates to the next batch, so the hourly runs cover everyone over time).
    **Never search or scroll the inbox**: it is shared with other clients and shows display names, so you would match the wrong person. Open each entry's `igUrl`
    (their profile) and click Message: that opens exactly their chat. Check the header is the same profile; if you can't confirm it, skip that creator. Never read, open,
    or reply to anyone not on this list (private messages, friends, other business). Not finding a chat is never a reason to pause: pause is only for Instagram restrictions.
@@ -103,6 +110,7 @@ Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min
 3. `GET /api/conversations?view=pending`: threads where **the creator spoke last**. A thread where a human (or Claude) already answered
    is NOT listed, so **skip it. Do not reply to it, not even to add something.** It reappears here only when the creator writes again.
    For each pending one, read the whole `thread`, the `client` (`offer` = your brief, `tierRates`/`maxRate` = hard ceiling, see "Money") and decide.
+   A pending entry may carry `guidance`: the instruction a human typed on the Inbox when handing the thread back. Follow it (ceiling and escalation rules still win); no `guidance` = you decide. It is cleared once a reply is posted.
 4. Reply: `POST /api/messages {direction:"out", igHandle, text, price?}`. **Put any price you state in `price` (e.g. "10k INR")**; the server refuses
    anything above the ceiling (422), so counter lower or escalate.
 5. `GET /api/messages/next`: before typing each one, **look at the end of that thread in Chrome**. If the last message is not the creator's
@@ -141,10 +149,6 @@ agent/manager takes over; or a message is off-topic or looks like spam.
 
 **Stop signals:** if they say stop/not interested/unsubscribe, reply once with a short polite close, set `status:"Declined"`, and never message again.
 Test mode (`IG_ALLOWLIST`) applies to replies too: the server refuses anyone not on the allowlist.
-**Two people, one database:** `OWNER` (in `.env.local`, e.g. `OWNER=akshit`) limits this app to creators it owns, even when both people work the same client.
-Queueing a DM claims an unowned creator for OWNER. When set, the server only lists, queues, sends, logs or replies for creators owned by OWNER; everyone else is
-invisible (watch/next/pending) or refused (403 "creator belongs to another person"). A 403 like that means: skip the creator, never open the thread. The other
-person sets their own `OWNER` in their own copy of the app.
 
 ## The automated pipeline (scheduled, unattended)
 1. **Brief**: the human fills the "New brief" chat in the dashboard. The server saves the client with the exact budgets per tier, follower range,
@@ -153,19 +157,24 @@ person sets their own `OWNER` in their own copy of the app.
    searches + hunts, posts a shortlist. Never queues or sends DMs.
 3. **Approval** (automatic): when the shortlist is posted and the client has a saved `dmTemplate`, the server queues the first DM for every shortlisted creator right then (the user's own saved message, word for word; caps, allowlist and the one-DM-per-creator rule still apply). With no saved message (or `AUTO_APPROVE=off`) a human approves on the Campaigns page, ticking creators and editing the message/follow-up.
 4. **outreach run** (Cowork, hourly; kind `outreach`, merges the old send+replies runs into one Instagram session): first logs replies, answers and
-   negotiates within `tierRates`, escalates; THEN delivers first DMs and due follow-ups (15 per run, 75/day). Replies run first so a follow-up never
+   negotiates within `tierRates`, escalates; THEN delivers first DMs and due follow-ups (10 per run, one batch only, 75/day). Replies run first so a follow-up never
    fires on a creator who just replied.
-5a. **Client review** (all manual, from the Campaigns page): the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
-   native Google Sheet shared with the service account as Editor). A human clicks "Create sheet": a NEW "Content creators" tab is added to that sheet (no link = a fresh sheet is made).
-   Nothing is posted anywhere. The human reviews it, gives it to the client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv`
-   ("Upload client's answers"; for an `.xlsx` the first tab with a Decision column is read, rows match by id or Instagram handle). That is the only way Yes/No enters the app: the app never reads the
-   Google Sheet and never posts to Slack.
-5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
-   who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply).
-   Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
-5c. **Script reminder (M2) and deadline (M3) emails**: two more one-off, per-creator email steps, each saved and sent by hand on the Campaigns page (`scriptReminderTemplate`/`scriptReminderSentAt`,
-   `deadlineTemplate`/`deadlineSentAt` on the client/creator) — not on a schedule, and Claude never writes or triggers them. The campaign-stage funnel on Campaigns (Creator → Outreach → Negotiate →
-   Client's approval → M1 → M2 → M3) is a read-only summary of these stages; the M3 button lists campaigns with a `contentDeadline` set and how many days are left.
+5a. **Client review**: the brief chat's last question asks for the client's Google Sheet link (optional; saved on the client as `sheetUrl`, must be a
+   native Google Sheet shared with the service account as Editor). When the client has that link, agreed deals are pushed into it automatically (5b): a NEW
+   "Content creators" tab is added each time there are fresh ones. A client with no link just waits here until a human clicks "Create sheet" on Campaigns
+   (manual only in that case — it makes a fresh sheet). Either way, nothing is posted anywhere automatically: a human reviews the sheet, gives it to the
+   client themselves and clicks "Mark given to client". When the client sends it back, the human uploads it as `.xlsx` or `.csv` ("Upload client's answers";
+   for an `.xlsx` the first tab with a Decision column is read, rows match by id or Instagram handle). That is the only way Yes/No enters the app: the app
+   never reads the Google Sheet and never posts to Slack. The guidelines/terms email itself (`guidelinesTemplate`) is written and saved on the Campaigns
+   page per campaign, any time — not only once a deal is agreed. From there a human can also download that review sheet as a real `.xlsx` file
+   ("Download .xlsx" next to "open sheet"), and edit a campaign's own details (products, creator rows/budgets, currency, other requirements, sheet
+   link — same form as the "New brief" chat) or delete it (only once archived; the creators/outreach/messages it produced are untouched).
+5b. **guidelines run** (Cowork, hourly, no Chrome): `POST /api/deals/run` first pushes agreed deals into every client's own sheet that already has a `sheetUrl`
+   (skips clients with none), then emails the client's saved `guidelinesTemplate` to every creator the client said Yes to (via the upload) and
+   who was not yet emailed (once ever; `EMAIL_ALLOWLIST`, `EMAIL_DAILY_CAP` apply). That email can also carry two attachments, both optional and set on
+   the Campaigns page: a static brand-guidelines/deck file (PDF/PPTX, uploaded once via UploadThing, same for every creator) and a personalized Terms
+   PDF (a master Google Doc with `{{name}}`/`{{brand}}` placeholders, copied and merged per creator via the Docs API, then exported to PDF and the
+   copy deleted). Claude never writes that email; it only triggers the endpoint. It does not use `/api/run/start`, so the Instagram pause/lock don't affect it.
 6. **Notifications** (`NOTIFY_URL`: ntfy topic, Discord or Slack webhook): pause, failed run/brief, shortlist ready, escalation, deal agreed.
 
 The three scheduled prompts live in `lib/prompts.ts` and are shown, with the real URL and key filled in, on the dashboard's **Automation** page
@@ -182,15 +191,37 @@ The dashboard "Worker" card shows the last run; if it says "No recent run" the s
 The UI needs a login (`proxy.ts`): DB-backed sessions (7 days, 24h idle, revocable on logout), scrypt-hashed password in the `users` collection, account lockout after 10
 wrong passwords (5 min, doubling, max 1h), per-IP limit, CSRF origin check, security headers (`next.config.ts`). `/api/*` is NOT behind the login: workers use the Bearer
 `API_KEY` (needs 8+ chars; the server refuses everything if it is unset). Create or reset a user (also signs them out everywhere and clears a lockout):
-`HAV_PW='long passphrase' [HAV_EMAIL=a@b.com] [HAV_ROLE=admin|manager|member] node --env-file=.env.local --experimental-strip-types scripts/set-user.mjs <username-or-email>`
+`HAV_PW='long passphrase' node --env-file=.env.local --experimental-strip-types scripts/set-user.mjs <username>`
+
+## Roles and the Email dashboard
+Dashboard logins have a `role` (`lib/roles.ts`): `admin` (everything; a user with no role saved is admin), `outreach` (creator pages, no Email/Users/Automation), `mail` (only `/mail`).
+`proxy.ts` enforces it per path; the mail role never gets `BriefChat` (it carries `API_KEY`). Admins create/edit/delete logins on `/users` (the `set-user.mjs` script still works and makes admins).
+The email agent (Hostinger webmail, its own scheduled prompt) reports with `POST /api/mail/threads` (Bearer): `{threads:[{mailbox:"info"|"editorial", email, subject, status, name?, category?, price?, note?, url?, followUpSent?}], run?:{ok,note}}`.
+Upserts by mailbox + sender + subject; `GET /api/mail/threads` lists open ones. It does NOT use `/api/run/start` (no Instagram lock/pause). The full email-agent prompt (with the report step) is on the Automation page ("4. Email agent").
+
+## Social-media dashboard
+Role `social` = the SM team (`/social/*`; `/social/orgs` and `/social/connect` are admin-only). Every SM user sees every org. An org = one client; its Instagram accounts are Meta connections (`botConnections`, token encrypted via `lib/secrets.ts`
+with `SECRETS_KEY`, falling back to `API_KEY`) made by an admin through Meta "Unified Login" (Organizations > Connect Instagram). The same connection powers Reports and Chat bots.
+Reports (`/social/reports`) read Meta's Instagram Insights API live (`lib/igreport.ts`; needs the `instagram_business_manage_insights` permission in the login configuration (Meta's current name for it; older apps may show `instagram_manage_insights`), Advanced Access for client accounts). Four sections per account, side by side: summary numbers with change vs the previous period, views/reach/interactions by format, top posts and reels, audience (gender/age/country/city).
+Date range 7/30/90 or custom (max 90 days; Meta requests are split into 30-day windows, distinct-account metrics are averaged across windows), CSV export, PDF = browser print. Each section fails on its own with Meta's message.
+NOT built (needs a daily job that saves snapshots; Meta gives totals only and keeps ~90 days): daily charts, follower growth over time, story history. The earlier version with `lib/igstore.ts`, `/api/meta/snapshot` and a line chart is in git history (commits fafd807, 7b45631).
+Metricool was replaced by this (no subscription needed). Old `orgs.metricool` / `socialAccounts` data in Mongo is unused and can be dropped.
+Chat bots (Step 3, `/social/bots`): rule/flow builder with a drag-and-drop canvas (`components/FlowEditor.tsx`); nodes = trigger (keywords, empty = every message), message (text/image/buttons/carousel), question (saves `{{var}}`, quick answers).
+Pure engine in `lib/botflow.ts` (validation = Meta's limits, payload shapes, matching), runtime in `lib/bot.ts` (session row only while a question waits; no message log), Meta client `lib/meta.ts`.
+Connecting accounts is admin-only (Organizations > Connect Instagram = Meta Unified Login, callback `/api/meta/callback`, webhook `/api/meta/webhook` signature-checked). The OAuth callback lives under /api because the session cookie is SameSite=Strict.
+`scripts/test-connection.mjs "<org>"` adds a fake (test:true) connection so the builder can be tried without Meta. Untested against real Meta (no app yet): token expiry/refresh, webhook subscription call, App Review.
+
+## Dropdowns and calendars (Material UI)
+Every dropdown and date picker uses Material UI (`@mui/material` 9, `@mui/x-date-pickers` 9 + dayjs), wrapped in `components/mui/`: `Select` (submits `name` like a native select; controlled via `value`/`onChange`, `compact`, per-option `disabled`), `DateField` (shows DD/MM/YYYY, submits `YYYY-MM-DD` through a hidden input, empty = no date) and `DateRange` (linked From/To). Never use a native `<select>` or `<input type="date">`.
+The theme (`components/mui/Providers.tsx`) reuses the app's CSS variables and the `data-theme` light/dark switch (`themeScript` always sets `data-theme`; MUI reads the same `theme` localStorage key).
+The global element styles for `input/select/textarea/button` in `globals.css` skip anything inside `.mui-scope` and MUI's popups (`.MuiPopper-root` etc.), so they don't leak into MUI's own elements.
 
 ## Access Hub (same app, same login)
-The Havstrategy Access Hub (client OAuth onboarding for Meta Ads / Instagram / Google Ads) lives under `/access/*`, with its tabs in the sidebar below Automation
-(`lib/nav.ts`). **There is one login**: the dashboard's. Users have `username`, `email` and `role` (`admin` | `manager` | `member`; no role = admin, so old users keep
-full access). Sign in with the username or the email. `lib/access/auth/session.ts` mirrors the signed-in user into the Hub's Postgres (admin -> super_admin,
-manager -> account_manager, member -> team_member); the Hub's Team page adds/edits/removes the same dashboard users. Admins: `havstrategy.work@gmail.com`
-(create with `set-user.mjs`, `HAV_EMAIL`, role admin is the default).
-- Code: `app/(hub)/access/**` (own root layout + Tailwind, so its CSS never touches the dashboard), `app/api/access/**`, `lib/access/**`, `components/access/**`.
+The Havstrategy Access Hub (client OAuth onboarding for Meta Ads / Instagram / Google Ads) lives under `/access/*`, with its tabs in the sidebar below System
+(`lib/nav.ts`). **There is one login**: the dashboard's (Users page or `set-user.mjs`; users also have an optional `email`, and you can sign in with it). Hub access follows the
+dashboard role (`hubRoleOf` in `lib/roles.ts`): `admin` = Hub super admin, `outreach` = Hub account manager, `mail`/`social` = no Hub access. `lib/access/auth/session.ts` mirrors the
+signed-in user into the Hub's Postgres; the Hub's Team page adds/edits/removes the same dashboard users (admin / outreach only).
+- Code: `app/(hub)/access/**` (own root layout + Tailwind, so its CSS never touches the dashboard; the dashboard pages live in the `app/(main)` group), `app/api/access/**`, `lib/access/**`, `components/access/**`.
   Its data is Postgres (Drizzle), not Mongo: `APP_MODE=demo` (default) = embedded PGlite in `.data/` (local only); `APP_MODE=production` = `DATABASE_URL` (Supabase/Postgres),
   schema via `npm run access:migrate`. Vercel needs production mode. `ACCESS_DEMO_DATA=on` seeds five fake sample clients (off by default).
 - Public (no login): `/access/onboard/*` (the link we send clients), `/access/privacy|terms|security|contact|data-deletion`, and `/api/access/public|oauth|cron` (token / CRON_SECRET).
