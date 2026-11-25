@@ -216,13 +216,15 @@ Every dropdown and date picker uses Material UI (`@mui/material` 9, `@mui/x-date
 The theme (`components/mui/Providers.tsx`) reuses the app's CSS variables and the `data-theme` light/dark switch (`themeScript` always sets `data-theme`; MUI reads the same `theme` localStorage key).
 The global element styles for `input/select/textarea/button` in `globals.css` skip anything inside `.mui-scope` and MUI's popups (`.MuiPopper-root` etc.), so they don't leak into MUI's own elements.
 
-## Access Hub (same app, same login)
+## Access Hub (same app, same login, same MongoDB)
 The Havstrategy Access Hub (client OAuth onboarding for Meta Ads / Instagram / Google Ads) lives under `/access/*`, with its tabs in the sidebar below System
 (`lib/nav.ts`). **There is one login**: the dashboard's (Users page or `set-user.mjs`; users also have an optional `email`, and you can sign in with it). Hub access follows the
-dashboard role (`hubRoleOf` in `lib/roles.ts`): `admin` = Hub super admin, `outreach` = Hub account manager, `mail`/`social` = no Hub access. `lib/access/auth/session.ts` mirrors the
-signed-in user into the Hub's Postgres; the Hub's Team page adds/edits/removes the same dashboard users (admin / outreach only).
+dashboard role (`hubRoleOf` in `lib/roles.ts`): `admin` = Hub super admin, `outreach` = Hub account manager, `mail`/`social` = no Hub access. There is no separate Hub user table: the people ARE the
+dashboard `users` (`lib/access/db/queries/users.ts`); the Hub's Team page adds/edits/removes those same logins (admin / outreach only).
 - Code: `app/(hub)/access/**` (own root layout + Tailwind, so its CSS never touches the dashboard; the dashboard pages live in the `app/(main)` group), `app/api/access/**`, `lib/access/**`, `components/access/**`.
-  Its data is Postgres (Drizzle), not Mongo: `APP_MODE=demo` (default) = embedded PGlite in `.data/` (local only); `APP_MODE=production` = `DATABASE_URL` (Supabase/Postgres),
-  schema via `npm run access:migrate`. Vercel needs production mode. `ACCESS_DEMO_DATA=on` seeds five fake sample clients (off by default).
+- **Data: the same MongoDB** (`MONGODB_URI`), in its own `hub_*` collections (`hub_organizations`, `hub_clients`, `hub_invitations`, `hub_connections`, `hub_assets`, `hub_access_requests`, `hub_credentials` (encrypted tokens),
+  `hub_audit_logs`, `hub_notifications`, `hub_analytics`); typed handle `lib/access/db/index.ts`, document shapes `schema-types.ts`, queries `db/queries/*`. Indexes are created on first use; no migration step, no second database.
+- `APP_MODE` only picks the OAuth providers: `demo` (default locally) = simulated Meta/Google authorization screens, `production` (default on Vercel) = the real providers.
+  Production needs `SESSION_SECRET` (signs the OAuth state), `TOKEN_ENCRYPTION_KEY_REFERENCE` (AES key for stored tokens, `openssl rand -base64 32`) and `CRON_SECRET` (`/api/access/cron/*`), plus the Meta/Google app credentials.
 - Public (no login): `/access/onboard/*` (the link we send clients), `/access/privacy|terms|security|contact|data-deletion`, and `/api/access/public|oauth|cron` (token / CRON_SECRET).
   The OAuth redirect URI to register with Meta/Google is `<APP_URL>/api/access/oauth/<platform>/callback`. Other env vars: `.env.example`.

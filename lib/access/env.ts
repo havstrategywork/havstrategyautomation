@@ -11,8 +11,8 @@ import { z } from "zod";
 export type AppMode = "demo" | "production";
 
 export function getAppMode(): AppMode {
-  // Demo mode keeps an embedded database on local disk, which cannot exist on Vercel (read-only, no persistence), so a hosted deploy is always
-  // production unless someone explicitly forces demo. (Production without DATABASE_URL shows a clear "database unavailable" message.)
+  // Demo = simulated Meta/Google authorization screens (no real accounts contacted); production = the real providers. The data is MongoDB either way.
+  // A hosted (Vercel) deploy is production unless someone explicitly forces demo.
   if (process.env.APP_MODE === "demo") return "demo";
   return process.env.APP_MODE === "production" || process.env.VERCEL ? "production" : "demo";
 }
@@ -29,7 +29,6 @@ export function getAppUrl(): string {
 const envSchema = z.object({
   APP_MODE: z.enum(["demo", "production"]).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
-  DATABASE_URL: z.string().optional(),
   SESSION_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY_REFERENCE: z.string().optional(),
   CRON_SECRET: z.string().optional(),

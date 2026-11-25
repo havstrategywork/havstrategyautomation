@@ -215,3 +215,8 @@ export async function sentToday(channel: "ig" | "email") {
 // Enforced server-side in /api/outreach/next, and /api/outreach/:id/sent, so a prompt can't bypass it.
 const allowList = (v?: string) => (v ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
 export const igAllowed = (handle?: string) => { const l = allowList(process.env.IG_ALLOWLIST); return !l.length || (!!handle && l.includes(handle.toLowerCase())); };
+
+/** The raw database handle, for modules that keep their own collections (the Access Hub hub_* collections in lib/access/db). */
+export async function mongoDb() {
+  return (await connect()).db();
+}

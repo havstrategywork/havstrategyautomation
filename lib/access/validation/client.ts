@@ -8,7 +8,7 @@ export const createClientSchema = z.object({
   website: z.string().trim().url().max(500).optional().or(z.literal("")),
   industry: z.string().trim().max(200).optional(),
   logoUrl: z.string().trim().max(2000).optional(),
-  assignedManagerId: z.string().uuid().optional().nullable(),
+  assignedManagerId: z.string().regex(/^[0-9a-f]{24}$/, "Invalid manager.").optional().nullable(),
   requiredPlatforms: z.array(z.enum(PHASE_1_PLATFORMS)).min(1, "Select at least one platform."),
   permissionPreset: z.enum(PERMISSION_PRESETS),
   customPermissions: z.record(z.string(), z.array(z.string())).optional(),
@@ -25,7 +25,7 @@ export const createInvitationSchema = z.object({
 export const listClientsQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
   status: z.enum(ONBOARDING_STATUSES).optional(),
-  assignedManagerId: z.string().uuid().optional(),
+  assignedManagerId: z.string().regex(/^[0-9a-f]{24}$/, "Invalid manager.").optional(),
   includeArchived: z.coerce.boolean().optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { AnyDb } from "@/lib/access/db";
-import * as schema from "@/lib/access/db/schema";
 import type { ActorType, AnalyticsEventType } from "@/lib/access/types";
 
 /**
@@ -20,7 +19,7 @@ export async function logAudit(
     metadata?: Record<string, unknown>;
   },
 ) {
-  await db.insert(schema.auditLogs).values({
+  await db.auditLogs.insertOne({
     id: randomUUID(),
     organizationId: input.organizationId,
     clientId: input.clientId ?? null,
@@ -29,6 +28,7 @@ export async function logAudit(
     action: input.action,
     platform: input.platform ?? null,
     sanitizedMetadata: input.metadata ?? null,
+    timestamp: new Date(),
   });
 }
 
@@ -37,12 +37,13 @@ export async function trackEvent(
   db: AnyDb,
   input: { organizationId: string; clientId?: string | null; eventType: AnalyticsEventType; platform?: string | null; metadata?: Record<string, unknown> },
 ) {
-  await db.insert(schema.analyticsEvents).values({
+  await db.analytics.insertOne({
     id: randomUUID(),
     organizationId: input.organizationId,
     clientId: input.clientId ?? null,
     eventType: input.eventType,
     platform: input.platform ?? null,
     metadata: input.metadata ?? {},
+    createdAt: new Date(),
   });
 }

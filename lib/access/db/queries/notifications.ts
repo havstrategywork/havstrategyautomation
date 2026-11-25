@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, isNull, type SQL } from "drizzle-orm";
-import type { AnyDb } from "@/lib/access/db";
-import * as schema from "@/lib/access/db/schema";
+import type { Filter } from "mongodb";
+import { NO_ID, type AnyDb } from "@/lib/access/db";
+import type { Notification } from "@/lib/access/db/schema-types";
 import type { NotificationChannel, NotificationType } from "@/lib/access/types";
 
 /**
@@ -14,22 +14,14 @@ export async function recentDuplicateExists(
   db: AnyDb,
   input: { clientId: string; notificationType: NotificationType; channel: NotificationChannel; withinMs: number; recipientId?: string | null },
 ) {
-  const since = new Date(Date.now() - input.withinMs);
-  const conditions: SQL[] = [
-    eq(schema.notifications.clientId, input.clientId),
-    eq(schema.notifications.notificationType, input.notificationType),
-    eq(schema.notifications.channel, input.channel),
-    gt(schema.notifications.createdAt, since),
-  ];
-  if (input.recipientId) conditions.push(eq(schema.notifications.recipientId, input.recipientId));
-  else conditions.push(isNull(schema.notifications.recipientId));
-
-  const rows = await db
-    .select({ id: schema.notifications.id })
-    .from(schema.notifications)
-    .where(and(...conditions))
-    .limit(1);
-  return rows.length > 0;
+  const filter: Filter<Notification> = {
+    clientId: input.clientId,
+    notificationType: input.notificationType,
+    channel: input.channel,
+    createdAt: { $gt: new Date(Date.now() - input.withinMs) },
+    recipientId: input.recipientId ?? null,
+  };
+  return (await db.notifications.countDocuments(filter, { limit: 1 })) > 0;
 }
 
 export async function insertNotification(
@@ -46,7 +38,7 @@ export async function insertNotification(
   },
 ) {
   const id = randomUUID();
-  await db.insert(schema.notifications).values({
+  await db.notifications.insertOne({
     id,
     organizationId: input.organizationId,
     clientId: input.clientId ?? null,
@@ -56,36 +48,20 @@ export async function insertNotification(
     channel: input.channel,
     deliveryStatus: input.deliveryStatus,
     payload: input.payload ?? null,
+    readAt: null,
+    createdAt: new Date(),
   });
   return id;
 }
 
 export async function listNotificationsForUser(db: AnyDb, organizationId: string, recipientId: string, limit = 50) {
-  return db
-    .select()
-    .from(schema.notifications)
-    .where(and(eq(schema.notifications.organizationId, organizationId), eq(schema.notifications.recipientId, recipientId)))
-    .orderBy(desc(schema.notifications.createdAt))
-    .limit(limit);
+  return db.notifications.find({ organizationId, recipientId }, NO_ID).sort({ createdAt: -1 }).limit(limit).toArray();
 }
 
 export async function markNotificationRead(db: AnyDb, id: string, recipientId: string) {
-  await db
-    .update(schema.notifications)
-    .set({ readAt: new Date() })
-    .where(and(eq(schema.notifications.id, id), eq(schema.notifications.recipientId, recipientId)));
+  await db.notifications.updateOne({ id, recipientId }, { $set: { readAt: new Date() } });
 }
 
 export async function countUnread(db: AnyDb, organizationId: string, recipientId: string) {
-  const rows = await db
-    .select({ id: schema.notifications.id })
-    .from(schema.notifications)
-    .where(
-      and(
-        eq(schema.notifications.organizationId, organizationId),
-        eq(schema.notifications.recipientId, recipientId),
-        isNull(schema.notifications.readAt),
-      ),
-    );
-  return rows.length;
+  return db.notifications.countDocuments({ organizationId, recipientId, readAt: null });
 }

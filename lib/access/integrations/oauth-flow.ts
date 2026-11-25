@@ -1,13 +1,11 @@
 import type { AnyDb } from "@/lib/access/db";
-import * as schema from "@/lib/access/db/schema";
-import { eq } from "drizzle-orm";
 import { getAdapter } from "./registry";
 import { createOAuthState, verifyOAuthState } from "./state";
 import { encryptSecret, decryptSecret } from "@/lib/access/crypto/tokens";
 import { getAppUrl } from "@/lib/access/env";
 import { logAudit, trackEvent } from "@/lib/access/audit";
 import { notify } from "@/lib/access/notifications";
-import { getClientById, recomputeOnboardingStatus } from "@/lib/access/db/queries/clients";
+import { getClientById, getClientByIdTrusted, recomputeOnboardingStatus } from "@/lib/access/db/queries/clients";
 import { getInvitationByRawToken, getLatestInvitationForClient, markInvitationCompleted } from "@/lib/access/db/queries/invitations";
 import {
   getConnection,
@@ -90,8 +88,7 @@ export async function handleOAuthCallback(
   const invitation = await getInvitationByRawToken(db, invitationToken);
   if (!invitation) return { redirectTo: `${appUrl}/access/onboard-error?reason=invitation_not_found` };
 
-  const clientRows = await db.select().from(schema.clients).where(eq(schema.clients.id, invitation.clientId)).limit(1);
-  const client = clientRows[0];
+  const client = await getClientByIdTrusted(db, invitation.clientId); // the id comes from the invitation token's own record
   if (!client) return { redirectTo: `${appUrl}/access/onboard-error?reason=client_not_found` };
 
   const connection = await getConnection(db, client.id, platform);
