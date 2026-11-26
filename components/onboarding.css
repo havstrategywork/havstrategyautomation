@@ -3,6 +3,7 @@
 html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 /* a logged-in team member previewing the page gets it without the dashboard chrome */
 .shell:has(.ob) > :not(.main) { display: none; }
+.shell:has(.ob) { display: block; } /* without this the shell's grid keeps its 252px sidebar column, and the whole form is squeezed into it */
 .main:has(.ob) { padding: 0; max-width: none; }
 .main:has(.ob)::before { display: none; }
 
