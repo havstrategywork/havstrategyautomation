@@ -53,10 +53,10 @@ function FileField({ field, value, onChange }: { field: Field; value: string; on
   );
 }
 
-function FieldView({ field, value, error, onChange, i }: { field: Field; value: string; error?: string; onChange: (v: string) => void; i: number }) {
+function FieldView({ field, value, error, onChange }: { field: Field; value: string; error?: string; onChange: (v: string) => void }) {
   const id = `f-${field.id}`, common = { id, value, "aria-invalid": !!error || undefined, "aria-describedby": error ? `${id}-e` : undefined, placeholder: field.placeholder, onChange: (e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement>) => onChange(e.target.value) };
   return (
-    <div className={`ob-field ob-rise${error ? " bad" : ""}`} style={{ animationDelay: `${i * 55}ms` }}>
+    <div className={`ob-field${error ? " bad" : ""}`}>
       {field.type === "scale" || field.type === "file" ? <div className="lab" id={`${id}-l`}>{field.label}</div> : <label htmlFor={id}>{field.label}{field.required && <span className="req" aria-hidden="true">*</span>}</label>}
       {field.help && <div className="help">{field.help}</div>}
       {field.type === "long" ? <textarea rows={3} {...common} />
@@ -76,7 +76,7 @@ function FieldView({ field, value, error, onChange, i }: { field: Field; value: 
 
 export default function OnboardingForm({ form, version }: { form: Step[]; version: number }) {
   const [services, setServices] = useState<ServiceId[]>([]), [answers, setAnswers] = useState<Answers>({}), [stepId, setStepId] = useState("services");
-  const [dir, setDir] = useState<"next" | "prev">("next"), [errors, setErrors] = useState<Answers>({}), [tried, setTried] = useState(false);
+  const [errors, setErrors] = useState<Answers>({}), [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false), [fail, setFail] = useState(""), [done, setDone] = useState<string | null>(null), [ready, setReady] = useState(false);
   const head = useRef<HTMLHeadingElement>(null), hp = useRef<HTMLInputElement>(null);
 
@@ -94,13 +94,13 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
   const set = (id: string, v: string) => { setAnswers((a) => ({ ...a, [id]: v })); if (errors[id]) setErrors((e) => ({ ...e, [id]: "" })); };
   const toggle = (id: ServiceId) => setServices((s) => (s.includes(id) ? s.filter((x) => x !== id) : SERVICES.map((x) => x.id).filter((x) => x === id || s.includes(x))));
   const allOn = services.length === SERVICES.length;
-  const go = (to: string, d: "next" | "prev") => { setDir(d); setStepId(to); setErrors({}); setTried(false); setFail(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const go = (to: string) => { setStepId(to); setErrors({}); setTried(false); setFail(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
   async function next() {
-    if (step.kind === "services") { if (!services.length) return setTried(true); return go(steps[1].id, "next"); }
+    if (step.kind === "services") { if (!services.length) return setTried(true); return go(steps[1].id); }
     const err = stepErrors(step, answers);
     if (Object.keys(err).length) { setErrors(err); setTried(true); return; }
-    if (!last) return go(steps[idx + 1].id, "next");
+    if (!last) return go(steps[idx + 1].id);
     setSending(true); setFail("");
     try {
       const r = await fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ services, answers, version, hp: hp.current?.value ?? "" }) });
@@ -115,7 +115,6 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
 
   return (
     <div className="ob">
-      <div className="ob-blobs" aria-hidden="true"><i /><i /><i /></div>
       <div className="ob-shell">
         <aside className="ob-rail">
           {/* A full page load on purpose: the editor is the dashboard, with its own styles and sign-in. */}
@@ -125,7 +124,7 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
           <ol className="ob-steps" aria-label="Progress">
             {steps.map((s, i) => (
               <li key={s.id} className={i < idx || done ? "done" : i === idx ? "now" : ""}>
-                <button type="button" disabled={!(i < idx) || !!done} onClick={() => go(s.id, "prev")} aria-current={i === idx ? "step" : undefined}>
+                <button type="button" disabled={!(i < idx) || !!done} onClick={() => go(s.id)} aria-current={i === idx ? "step" : undefined}>
                   <span className="ob-dot">{i < idx || done ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d={CHECK} /></svg> : i + 1}</span>{s.id === "services" ? "Your services" : s.title}
                 </button>
               </li>
@@ -148,7 +147,7 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
           ) : (
             <form noValidate onSubmit={(e) => { e.preventDefault(); void next(); }}>
               <div className="ob-body">
-                <div className={`ob-step in-${dir}`} key={step.id}>
+                <div className="ob-step" key={step.id}>
                   <div className="ob-head">
                     <div className="ob-count">Step {idx + 1} of {steps.length}</div>
                     <h2 ref={head} tabIndex={-1}>{step.title}</h2>
@@ -162,8 +161,8 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
                         <button type="button" className="ob-all" onClick={() => setServices(allOn ? [] : SERVICES.map((s) => s.id))}>{allOn ? "Clear all" : "Select all"}</button>
                       </div>
                       <div className="ob-svcs" role="group" aria-label="Services">
-                        {SERVICES.map((s, i) => (
-                          <button key={s.id} type="button" role="checkbox" aria-checked={services.includes(s.id)} className="ob-svc ob-rise" style={{ animationDelay: `${i * 70}ms` }} onClick={() => toggle(s.id)}>
+                        {SERVICES.map((s) => (
+                          <button key={s.id} type="button" role="checkbox" aria-checked={services.includes(s.id)} className="ob-svc" onClick={() => toggle(s.id)}>
                             <span className="ob-tick"><svg viewBox="0 0 24 24" fill="none" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d={CHECK} /></svg></span>
                             <span className="ob-ico"><Svg d={PATH[s.id]} /></span>
                             <b>{s.label}</b><span className="b">{s.blurb}</span>
@@ -173,14 +172,14 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
                     </>
                   ) : (
                     <div className="ob-fields">
-                      {step.fields.map((fd, i) => <FieldView key={fd.id} i={i} field={fd} value={answers[fd.id] ?? ""} error={errors[fd.id]} onChange={(v) => set(fd.id, v)} />)}
+                      {step.fields.map((fd) => <FieldView key={fd.id} field={fd} value={answers[fd.id] ?? ""} error={errors[fd.id]} onChange={(v) => set(fd.id, v)} />)}
                     </div>
                   )}
                   <input ref={hp} className="ob-hp" type="text" name="hp" tabIndex={-1} autoComplete="off" aria-hidden="true" defaultValue="" />
                 </div>
               </div>
               <div className="ob-foot">
-                {idx > 0 ? <button type="button" className="ob-back" onClick={() => go(steps[idx - 1].id, "prev")}>← Back</button> : <span />}
+                {idx > 0 ? <button type="button" className="ob-back" onClick={() => go(steps[idx - 1].id)}>← Back</button> : <span />}
                 <span className="msg" role="alert">{fail || (tried && Object.values(errors).some(Boolean) ? "Please fix the highlighted answers." : "")}</span>
                 <button className="ob-next" type="submit" disabled={sending || (step.kind === "services" && !services.length)}>
                   {sending ? "Sending…" : last ? "Submit" : "Continue"}<Svg d="M5 12h14M13 6l6 6-6 6" />
