@@ -8,25 +8,8 @@
 export const ROLES = ["super_admin", "account_manager", "team_member"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const PHASE_1_PLATFORMS = ["meta_ads", "instagram", "google_ads"] as const;
-export type Phase1Platform = (typeof PHASE_1_PLATFORMS)[number];
-
-export const PHASE_2_PLATFORMS = [
-  "google_analytics_4",
-  "google_merchant_center",
-  "google_search_console",
-  "google_tag_manager",
-  "shopify",
-  "youtube",
-  "whatsapp_business",
-  "klaviyo",
-  "linkedin_ads",
-  "pinterest_ads",
-] as const;
-export type Phase2Platform = (typeof PHASE_2_PLATFORMS)[number];
-
-export const ALL_PLATFORMS = [...PHASE_1_PLATFORMS, ...PHASE_2_PLATFORMS] as const;
-export type Platform = (typeof ALL_PLATFORMS)[number];
+export const PLATFORMS = ["meta_ads", "instagram", "google_ads", "google_analytics_4", "google_tag_manager", "shopify"] as const;
+export type Platform = (typeof PLATFORMS)[number];
 
 export const ONBOARDING_STATUSES = [
   "not_started",
@@ -157,6 +140,6 @@ export const ANALYTICS_EVENT_TYPES = [
 ] as const;
 export type AnalyticsEventType = (typeof ANALYTICS_EVENT_TYPES)[number];
 
-export function isPhase1Platform(platform: string): platform is Phase1Platform {
-  return (PHASE_1_PLATFORMS as readonly string[]).includes(platform);
+export function isPlatform(platform: string): platform is Platform {
+  return (PLATFORMS as readonly string[]).includes(platform);
 }

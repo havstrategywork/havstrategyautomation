@@ -26,17 +26,50 @@ export interface OAuthState {
   platform: string;
   nonce: string;
   scopes: string[];
+  /** Shopify only: the store domain the client asked to connect; the callback must be for the same store. */
+  account?: string;
 }
 
-export async function createOAuthState(invitationToken: string, platform: string, scopes: string[]): Promise<{ state: string; nonce: string }> {
+export async function createOAuthState(invitationToken: string, platform: string, scopes: string[], account?: string): Promise<{ state: string; nonce: string }> {
   const nonce = randomBytes(16).toString("base64url");
   const key = await getSecretKey();
-  const state = await new SignJWT({ invitationToken, platform, nonce, scopes })
+  const state = await new SignJWT({ invitationToken, platform, nonce, scopes, ...(account && { account }) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("15m")
     .sign(key);
   return { state, nonce };
+}
+
+export const AGENCY_NONCE_COOKIE = "oauth_nonce_google_ads_agency";
+
+/** The agency connecting its own Google Ads manager account (not a client onboarding), started by a signed-in admin. */
+export interface AgencyState {
+  agency: true;
+  nonce: string;
+  userId: string;
+  userName: string;
+  organizationId: string;
+}
+
+export async function createAgencyState(input: { userId: string; userName: string; organizationId: string }): Promise<{ state: string; nonce: string }> {
+  const nonce = randomBytes(16).toString("base64url");
+  const state = await new SignJWT({ agency: true, nonce, ...input })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(await getSecretKey());
+  return { state, nonce };
+}
+
+export async function verifyAgencyState(state: string, expectedNonce: string): Promise<AgencyState | null> {
+  try {
+    const { payload } = await jwtVerify(state, await getSecretKey());
+    const value = payload as unknown as AgencyState;
+    return value.agency === true && value.nonce === expectedNonce && value.userId && value.organizationId ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function verifyOAuthState(state: string, expectedNonce: string): Promise<{ ok: true; value: OAuthState } | { ok: false; error: string }> {

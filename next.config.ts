@@ -11,9 +11,7 @@ export default {
   // Dev only: `next dev` answers its own scripts with 403 unless the page was opened from "localhost", so the public onboarding form looked fine but did nothing
   // from 127.0.0.1, a phone on the same wifi, or an ngrok link. These origins may use the dev server.
   allowedDevOrigins: ["127.0.0.1", "192.168.*.*", "10.*.*.*", "*.ngrok-free.app", "*.ngrok-free.dev", "*.ngrok.app", "*.ngrok.io"],
-  // Access Hub: PGlite (embedded Postgres, local/demo only) loads WASM relative to its own file, which bundling breaks, so Next requires it natively.
-  serverExternalPackages: ["mongodb", "@electric-sql/pglite", "drizzle-orm"],
-  outputFileTracingIncludes: { "/**": ["./access-hub/drizzle/**"] },
+  serverExternalPackages: ["mongodb"],
   // Tailwind is used only by the Access Hub pages (app/(hub)); the dashboard keeps its own plain CSS.
   turbopack: { rules: { "*.css": { loaders: ["@tailwindcss/turbopack"], as: "*.css" } } },
   poweredByHeader: false,

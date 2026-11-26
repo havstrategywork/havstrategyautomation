@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { HEADER, toRow, type ServiceId } from "@/lib/onboarding";
+import { sheetRows } from "@/lib/onboarding";
+import { getForm } from "@/lib/onboardingForm";
 import { currentUser } from "@/lib/session";
 import { rowsXlsx } from "@/lib/xlsx";
 
@@ -7,7 +8,7 @@ import { rowsXlsx } from "@/lib/xlsx";
 export async function GET() {
   if ((await currentUser())?.role !== "admin") return new Response("sign in as an admin first", { status: 401 });
   const rows = await (await db()).onboarding.find().sort({ at: -1 }).limit(5000).toArray();
-  const buf = await rowsXlsx([HEADER, ...rows.map((r) => toRow(r.at, r.services as ServiceId[], r.answers))]);
+  const buf = await rowsXlsx(sheetRows(rows, (await getForm()).steps));
   return new Response(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

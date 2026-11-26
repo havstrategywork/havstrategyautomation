@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { allFields, HEADER, stepErrors, STEPS, toRow, validate, visibleSteps } from "./onboarding.ts";
+import { allFields, asked, DEFAULT_STEPS as STEPS, questionsOf, sheetRows, stepErrors, validate as check, validateForm, visibleSteps, type Step } from "./onboarding.ts";
+const validate = (body: unknown) => check(body, STEPS);
 
 const base = { name: "Asha", email: "asha@brand.com", company: "Brand Co" };
-const ids = (s: string[]) => visibleSteps(s as never).map((x) => x.id);
+const ids = (s: string[]) => visibleSteps(STEPS, s as never).map((x) => x.id);
 
 // every old-form question is kept: 57 questions from the Google Form + the new contact/creator/google/meta/seo ones, no duplicate ids
-const all = allFields();
+const all = allFields(STEPS);
 assert.equal(new Set(all.map((x) => x.id)).size, all.length);
-assert.equal(HEADER.length, all.length + 2);
 assert.equal(STEPS[0].kind, "services");
 
 // steps follow the selection
@@ -30,22 +30,47 @@ assert.equal(validate({ services: ["seo"], answers: { ...base, logos: "logo.png 
 assert.equal(validate({ services: ["seo"], answers: { ...base, where: "x".repeat(5001) } }).ok, false);
 assert.deepEqual(stepErrors(STEPS[1], base), {});
 
-// the row lines up with the header
-const row = toRow(new Date("2026-11-24T10:30:00Z"), ["seo", "meta"], { ...base, sKeywords: "pizza" });
-assert.equal(row.length, HEADER.length);
+// the export: one column per question, lined up
+const sub = { at: new Date("2026-11-24T10:30:00Z"), services: ["seo", "meta"], answers: { ...base, sKeywords: "pizza" } };
+const [header, row] = sheetRows([sub], STEPS);
+assert.equal(header.length, all.length + 2);
+assert.equal(row.length, header.length);
 assert.equal(row[0], "2026-11-24 10:30");
 assert.equal(row[1], "SEO, Meta Ads"); // in the order the client chose them
-assert.equal(row[HEADER.indexOf("Which keywords, topics or pages do you most want to rank for?")], "pizza");
+assert.equal(row[header.indexOf("Which keywords, topics or pages do you most want to rank for?")], "pizza");
+
+// editing the form
+const copy = () => structuredClone(STEPS) as Step[];
+assert.deepEqual(validateForm(copy()), { ok: true, steps: STEPS }); // the built-in form is itself valid
+const edited = copy();
+edited[1].fields.push({ id: "q_new", label: "  What is your launch date?  ", type: "text", required: true, junk: 1 } as never);
+const seo = edited.find((s) => s.id === "seo")!;
+seo.fields = seo.fields.filter((f) => f.id !== "sKeywords"); // remove a question
+const saved = validateForm(edited);
+assert.ok(saved.ok && saved.steps[1].fields.at(-1)!.label === "What is your launch date?" && !("junk" in saved.steps[1].fields.at(-1)!));
+assert.equal(check({ services: ["seo"], answers: base }, saved.ok ? saved.steps : []).ok, false); // the new required question is enforced
+const answered = check({ services: ["seo"], answers: { ...base, q_new: "May", sKeywords: "x" } }, saved.ok ? saved.steps : []);
+assert.ok(answered.ok && answered.answers.q_new === "May" && !("sKeywords" in answered.answers));
+// answers to a removed question stay readable and exportable
+const after = saved.ok ? saved.steps : [];
+const removedHeader = sheetRows([sub], after)[0];
+assert.ok(removedHeader.includes("Which keywords, topics or pages do you most want to rank for? (removed question)"));
+assert.ok(questionsOf(sub, after).some((q) => q.id === "sKeywords" && q.section === "SEO"));
+const snap = { ...sub, questions: asked(STEPS, ["seo"]) };
+assert.equal(questionsOf(snap, []).find((q) => q.id === "sKeywords")!.label, "Which keywords, topics or pages do you most want to rank for?");
+
+const rejected = (change: (f: Step[]) => unknown, why: RegExp) => { const f = copy(); const r = validateForm(change(f) ?? f); assert.ok(!r.ok && why.test(r.error), `${why}: ${r.ok ? "accepted" : r.error}`); };
+rejected((f) => { f[1].fields = f[1].fields.filter((x) => x.id !== "email"); }, /can't be removed/);
+rejected((f) => { f[1].fields[0].required = false; }, /must stay a required/);
+rejected((f) => { f[1].services = ["seo"]; }, /every client sees/);
+rejected((f) => { f[2].fields = []; }, /add a question/);
+rejected((f) => { f[2].fields[0].label = " "; }, /needs a question text/);
+rejected((f) => { f[2].fields[0].id = "email"; }, /duplicated/);
+rejected((f) => { f[2].fields[0].id = "constructor"; }, /invalid id/);
+rejected((f) => { f[2].fields[0].type = "html" as never; }, /unknown answer type/);
+rejected((f) => f.slice(1), /service picker/);
+rejected(() => [], /empty/);
 console.log("onboarding ok");
-import { sheetIdFromUrl } from "./onboarding.ts";
-const sid = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
-assert.equal(sheetIdFromUrl(`https://docs.google.com/spreadsheets/d/${sid}/edit?gid=0#gid=0`), sid);
-assert.equal(sheetIdFromUrl(`  https://docs.google.com/spreadsheets/d/${sid}  `), sid);
-assert.equal(sheetIdFromUrl(sid), sid);
-assert.equal(sheetIdFromUrl(`https://docs.google.com/forms/d/${sid}/edit`), null); // a Form is not a sheet
-assert.equal(sheetIdFromUrl(`https://evil.com/spreadsheets/d/${sid}`), null);
-assert.equal(sheetIdFromUrl("hello"), null);
-console.log("sheet link ok");
 const site = validate({ services: ["seo"], answers: { ...base, website: "mysite.com" } });
 assert.ok(site.ok && site.answers.website === "https://mysite.com"); // no https:// needed
 assert.ok(validate({ services: ["seo"], answers: { ...base, website: "http://a.co/x?y=1" } }).ok);

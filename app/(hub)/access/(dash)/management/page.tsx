@@ -12,7 +12,7 @@ import { ConnectionStatusBadge } from "@/components/access/status-badge";
 import { apiFetch } from "@/lib/access/api-client";
 import { timeAgo } from "@/lib/access/utils";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
-import type { DisplayConnectionStatus, Phase1Platform } from "@/lib/access/types";
+import type { DisplayConnectionStatus, Platform } from "@/lib/access/types";
 
 interface AttentionItem {
   clientId: string;
@@ -69,7 +69,7 @@ export default function AccessManagementPage() {
                 <Link href={`/access/clients/${item.clientId}`} className="font-medium text-foreground hover:underline">
                   {item.brandName}
                 </Link>
-                <p className="text-xs text-muted">{PLATFORM_CATALOG[item.platform as Phase1Platform]?.label ?? item.platform}</p>
+                <p className="text-xs text-muted">{PLATFORM_CATALOG[item.platform as Platform]?.label ?? item.platform}</p>
                 {item.errorMessage ? <p className="mt-1 max-w-md text-xs text-warning">{item.errorMessage}</p> : null}
               </div>
               <div className="flex items-center gap-3">

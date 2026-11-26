@@ -5,14 +5,14 @@ import { selectAssetsSchema } from "@/lib/access/validation/onboarding";
 import { resolveInvitation } from "@/lib/access/public-onboarding";
 import { getConnection } from "@/lib/access/db/queries/connections";
 import { discoverAssetsForConnection, completeAssetSelection } from "@/lib/access/integrations/oauth-flow";
-import { isPhase1Platform } from "@/lib/access/types";
+import { isPlatform } from "@/lib/access/types";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ token: string; platform: string }> }) {
   const dbGuard = await withDb();
   if (isResponse(dbGuard)) return dbGuard;
   const { db } = dbGuard;
   const { token, platform } = await params;
-  if (!isPhase1Platform(platform)) return NextResponse.json({ error: "Unsupported platform." }, { status: 400 });
+  if (!isPlatform(platform)) return NextResponse.json({ error: "Unsupported platform." }, { status: 400 });
 
   const resolved = await resolveInvitation(db, token);
   if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
@@ -30,7 +30,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (isResponse(dbGuard)) return dbGuard;
   const { db } = dbGuard;
   const { token, platform } = await params;
-  if (!isPhase1Platform(platform)) return NextResponse.json({ error: "Unsupported platform." }, { status: 400 });
+  if (!isPlatform(platform)) return NextResponse.json({ error: "Unsupported platform." }, { status: 400 });
 
   const resolved = await resolveInvitation(db, token);
   if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });

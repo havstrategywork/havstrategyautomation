@@ -1,15 +1,15 @@
 import { generateSecureToken } from "@/lib/access/crypto/tokens";
 import { getAppUrl } from "@/lib/access/env";
-import type { Phase1Platform } from "@/lib/access/types";
+import type { Platform } from "@/lib/access/types";
 import type { DiscoveredAsset, PlatformAdapter } from "../types";
 
 /**
  * Builds a fully in-process, zero-network demo adapter. Shared across the
- * three Phase 1 platforms so their simulated behavior (and its "never claim
+ * platforms so their simulated behavior (and its "never claim
  * simulated access is real" boundary) stays consistent - only the fake
  * asset catalog differs per platform, passed in by the caller.
  */
-export function createDemoAdapter(platform: Phase1Platform, assetCatalog: DiscoveredAsset[]): PlatformAdapter {
+export function createDemoAdapter(platform: Platform, assetCatalog: DiscoveredAsset[]): PlatformAdapter {
   return {
     platform,
     isConfigured: () => true,
@@ -21,11 +21,11 @@ export function createDemoAdapter(platform: Phase1Platform, assetCatalog: Discov
       return { authorizationUrl: `${getAppUrl()}/access/onboard/demo-authorize/${platform}?state=${encodeURIComponent(state)}` };
     },
 
-    async exchangeAuthorizationCode({ code, requestedScopes }) {
+    async exchangeAuthorizationCode({ code, requestedScopes, account }) {
       if (code === "demo-approve-full") {
         return {
           ok: true,
-          providerUserId: `demo-${platform}-${generateSecureToken(6)}`,
+          providerUserId: account ?? `demo-${platform}-${generateSecureToken(6)}`,
           accessToken: generateSecureToken(),
           refreshToken: generateSecureToken(),
           expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
@@ -36,7 +36,7 @@ export function createDemoAdapter(platform: Phase1Platform, assetCatalog: Discov
         const grantedScopes = requestedScopes.slice(0, Math.max(1, Math.ceil(requestedScopes.length / 2)));
         return {
           ok: true,
-          providerUserId: `demo-${platform}-${generateSecureToken(6)}`,
+          providerUserId: account ?? `demo-${platform}-${generateSecureToken(6)}`,
           accessToken: generateSecureToken(),
           refreshToken: generateSecureToken(),
           expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),

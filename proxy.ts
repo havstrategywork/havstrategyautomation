@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE, sessionFor } from "@/lib/session";
-import { canView, homeFor } from "@/lib/roles";
+import { canView, FORM_EDITOR, homeFor, isFormAdmin, safeNext } from "@/lib/roles";
 
 // Every dashboard page (and its server actions) needs a valid DB-backed session. /api/* is for the workers and has its own Bearer key
 // (the Access Hub's /api/access/* routes check the same session themselves, or a token for the public client onboarding pages).
@@ -20,8 +20,15 @@ const go = (req: NextRequest, path: string) => {
 export async function proxy(req: NextRequest) {
   const me = await sessionFor(req.cookies.get(COOKIE)?.value);
   const p = req.nextUrl.pathname;
-  if (PUBLIC.has(p)) return me && p === "/login" ? go(req, homeFor(me.role)) : NextResponse.next();
+  // The form editor: signed out, or signed in as anyone but the form admin, goes to the sign-in screen, which comes back here.
+  const toEditorLogin = `/login?next=${FORM_EDITOR}`;
+  if (PUBLIC.has(p)) {
+    // someone already signed in normally skips /login, unless they came to switch to the form admin's account
+    const switching = me && safeNext(req.nextUrl.searchParams.get("next")) && !isFormAdmin(me);
+    return me && p === "/login" && !switching ? go(req, safeNext(req.nextUrl.searchParams.get("next")) ?? homeFor(me.role)) : NextResponse.next();
+  }
   if (isPublic(p)) return NextResponse.next();
+  if (p === FORM_EDITOR || p.startsWith(`${FORM_EDITOR}/`)) return me && isFormAdmin(me) ? NextResponse.next() : go(req, toEditorLogin);
   if (!me) return go(req, "/login");
   return canView(me.role, p) ? NextResponse.next() : go(req, homeFor(me.role)); // wrong role: bounce to its own home (server actions post to the page path, so they are covered too)
 }

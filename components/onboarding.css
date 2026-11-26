@@ -4,6 +4,7 @@ html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 /* a logged-in team member previewing the page gets it without the dashboard chrome */
 .shell:has(.ob) { display: block; } /* drop the sidebar column too, or .main lands in the 252px one */
 .shell:has(.ob) > :not(.main) { display: none; }
+.shell:has(.ob) { display: block; } /* without this the shell's grid keeps its 252px sidebar column, and the whole form is squeezed into it */
 .main:has(.ob) { padding: 0; max-width: none; }
 .main:has(.ob)::before { display: none; }
 
@@ -11,28 +12,23 @@ html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
   --ink: #17151f; --ink-2: #3b3848; --muted: #6b6878; --line: #e8e3da; --line-2: #d9d3c7; --card: #ffffff; --tint: #f1efff;
   --a1: #5b4ef5; --a2: #a855f7; --a3: #ec4899; --good: #0f8a4a; --bad: #c2261d;
   --grad: linear-gradient(135deg, var(--a1) 0%, var(--a2) 55%, var(--a3) 100%);
-  color-scheme: only light; color: var(--ink); position: relative; min-height: 100vh; overflow: hidden; isolation: isolate;
-  background: #faf7f2; font-family: var(--font-ui, system-ui, sans-serif); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  color-scheme: only light; color: var(--ink); position: relative; min-height: 100vh;
+  background: radial-gradient(520px 480px at 0% 0%, rgba(201, 194, 255, .5), transparent 70%), radial-gradient(460px 440px at 100% 28%, rgba(255, 208, 230, .45), transparent 70%),
+    radial-gradient(560px 460px at 42% 100%, rgba(255, 231, 199, .45), transparent 70%), #faf7f2; font-family: var(--font-ui, system-ui, sans-serif); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
 }
 .ob *, .ob *::before, .ob *::after { box-sizing: border-box; }
 .ob button { font: inherit; cursor: pointer; }
 .ob h1, .ob h2 { font-family: var(--font-serif, Georgia, serif); font-weight: 400; letter-spacing: -.01em; margin: 0; }
 .ob em { font-style: italic; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: .06em; }
 
-/* drifting colour blobs behind everything */
-.ob-blobs { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
-.ob-blobs i { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .5; animation: ob-float 22s ease-in-out infinite; }
-.ob-blobs i:nth-child(1) { width: 440px; height: 440px; left: -120px; top: -100px; background: #c9c2ff; }
-.ob-blobs i:nth-child(2) { width: 380px; height: 380px; right: -80px; top: 18%; background: #ffd0e6; animation-delay: -7s; }
-.ob-blobs i:nth-child(3) { width: 420px; height: 420px; left: 30%; bottom: -160px; background: #ffe7c7; animation-delay: -13s; }
-@keyframes ob-float { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(40px, 30px) scale(1.08); } }
-
 .ob-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 3rem; max-width: 1200px; margin: 0 auto; padding: 3rem 2rem 4rem; align-items: start; }
 
 /* ---- left rail ---- */
-.ob-rail { position: sticky; top: 3rem; }
 .ob-brand { display: flex; align-items: center; gap: .65rem; font-weight: 650; letter-spacing: -.01em; margin-bottom: 2rem; }
 .ob-brand img { width: 36px; height: 36px; border-radius: 10px; }
+.ob a.ob-admin { margin-left: .35rem; font-size: 12.5px; font-weight: 600; color: var(--a1); background: rgba(255, 255, 255, .85); border: 1px solid var(--line-2); border-radius: 99px; padding: .25rem .8rem; text-decoration: none; transition: background .2s, border-color .2s; }
+.ob a.ob-admin:hover { background: var(--tint); border-color: var(--a1); }
+.ob a.ob-admin:focus-visible { outline: 2px solid var(--a1); outline-offset: 2px; }
 .ob-rail h1 { font-size: 40px; line-height: 1.08; }
 .ob-rail p { color: var(--muted); margin: .9rem 0 1.8rem; }
 .ob-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .15rem; position: relative; max-height: calc(100vh - 22rem); min-height: 9rem; overflow-y: auto; scrollbar-width: thin; } /* all 16 steps never push the page */
@@ -58,15 +54,8 @@ html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 .ob-head h2:focus, .ob-head h2:focus-visible { outline: none; box-shadow: none; } /* focused for screen readers on each step, never drawn */
 .ob-head p { color: var(--muted); margin: .55rem 0 1.7rem; max-width: 56ch; }
 
-/* No opacity in these keyframes on purpose: if a browser's animation engine ever fails to finish or run one (throttled tab,
-   a "reduce animations" mode, a GPU/compositor quirk), the element must still be fully OPAQUE and readable, just unmoved
-   or slightly offset — never invisible. Motion-only, content never disappears. */
-.ob-step.in-next { animation: ob-in-next .55s cubic-bezier(.2, .8, .2, 1) both; }
-.ob-step.in-prev { animation: ob-in-prev .55s cubic-bezier(.2, .8, .2, 1) both; }
-@keyframes ob-in-next { from { transform: translateX(34px); filter: blur(4px); } to { transform: none; filter: none; } }
-@keyframes ob-in-prev { from { transform: translateX(-34px); filter: blur(4px); } to { transform: none; filter: none; } }
-.ob-rise { animation: ob-rise .5s cubic-bezier(.2, .8, .2, 1) both; }
-@keyframes ob-rise { from { transform: translateY(14px); } to { transform: none; } }
+/* Nothing animates while the page or a new step appears, and this page has no blur filters, layers behind the content or sticky parts, on purpose:
+   on some Chrome/graphics setups those left large areas unpainted until the window was switched. Only the visitor's own clicks and hovers animate. */
 
 /* ---- service picker ---- */
 .ob-pickbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
@@ -124,7 +113,7 @@ html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 .ob-bar { height: 4px; border-radius: 4px; background: #efebe3; overflow: hidden; margin-top: .6rem; }
 .ob-bar i { display: block; height: 100%; background: var(--grad); transition: width .2s; }
 .ob-files { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .4rem; }
-.ob-files li { display: flex; align-items: center; gap: .6rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 13.5px; animation: ob-rise .35s both; }
+.ob-files li { display: flex; align-items: center; gap: .6rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 13.5px; }
 .ob-files li svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
 .ob-files li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ob-files button { all: unset; cursor: pointer; color: var(--muted); padding: .1rem .4rem; border-radius: 6px; }
@@ -162,7 +151,6 @@ html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 /* ---- small screens ---- */
 @media (max-width: 960px) {
   .ob-shell { grid-template-columns: 1fr; gap: 1.5rem; padding: 1.5rem 1rem 3rem; }
-  .ob-rail { position: static; }
   .ob-brand { margin-bottom: 1rem; }
   .ob-rail h1 { font-size: 30px; }
   .ob-rail p, .ob-steps, .ob-note { display: none; }

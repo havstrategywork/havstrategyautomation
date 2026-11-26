@@ -1,6 +1,7 @@
-// The client onboarding form: ONE schema that drives the public page, the server-side validation and the Google Sheet / .xlsx columns.
-// Pure (no imports), so the browser, the API route and the tests share it. Question wording comes from the agency's old Google Form
-// ("Onboarding Form", 62 items); the Creator marketing, Meta Ads and SEO steps are new (the old form had no questions for them).
+// The client onboarding form: ONE shape that drives the public page, the server-side validation, the dashboard and the .xlsx export.
+// The live questions are edited by admins on the "Form editor" page and stored in MongoDB (lib/onboardingForm.ts); DEFAULT_STEPS below is
+// what the form starts from. Pure (no imports), so the browser, the API route and the tests share it. Question wording comes from the
+// agency's old Google Form ("Onboarding Form", 62 items); the Creator marketing, Meta Ads and SEO steps were added later.
 
 export const SERVICES = [
   { id: "social", label: "Social media marketing", blurb: "Content, community and growth on your social channels." },
@@ -21,7 +22,7 @@ const t = (id: string, label: string, o: Partial<Field> = {}): Field => ({ id, l
 const l = (id: string, label: string, o: Partial<Field> = {}): Field => ({ id, label, type: "long", ...o });
 const f = (id: string, label: string, o: Partial<Field> = {}): Field => ({ id, label, type: "file", ...o });
 
-export const STEPS: Step[] = [
+export const DEFAULT_STEPS: Step[] = [
   { id: "services", kind: "services", title: "What can we help you with?", intro: "Pick every service you are interested in. We only ask about what you choose.", fields: [] },
   {
     id: "contact", title: "Let's start with you", intro: "So we know who to talk to.",
@@ -180,8 +181,8 @@ export const STEPS: Step[] = [
 ];
 
 /** Steps that apply to this selection, in order. With nothing selected only the picker and the always-on steps show. */
-export const visibleSteps = (services: readonly ServiceId[]) => STEPS.filter((s) => !s.services || s.services.some((x) => services.includes(x)));
-export const allFields = () => STEPS.flatMap((s) => s.fields);
+export const visibleSteps = (steps: readonly Step[], services: readonly ServiceId[]) => steps.filter((s) => !s.services?.length || s.services.some((x) => services.includes(x)));
+export const allFields = (steps: readonly Step[]) => steps.flatMap((s) => s.fields);
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const FILE_LINE = /(https:\/\/[^\s]+)$/;
@@ -204,30 +205,111 @@ export function stepErrors(step: Step, a: Record<string, string>): Record<string
 }
 
 /** Server-side check of a whole submission. Anything not asked for the chosen services is dropped, never stored. */
-export function validate(body: unknown): { ok: true; services: ServiceId[]; answers: Record<string, string> } | { ok: false; error: string } {
+export function validate(body: unknown, steps: readonly Step[]): { ok: true; services: ServiceId[]; answers: Record<string, string> } | { ok: false; error: string } {
   const b = (body ?? {}) as { services?: unknown; answers?: unknown };
   const services = [...new Set(Array.isArray(b.services) ? b.services.filter(isService) : [])];
   if (!services.length) return { ok: false, error: "Pick at least one service." };
   const raw = b.answers && typeof b.answers === "object" ? (b.answers as Record<string, unknown>) : {};
   const answers: Record<string, string> = {};
-  for (const step of visibleSteps(services)) {
+  for (const step of visibleSteps(steps, services)) {
     for (const fd of step.fields) answers[fd.id] = typeof raw[fd.id] === "string" ? (raw[fd.id] as string).trim() : "";
     const err = stepErrors(step, answers);
     const first = Object.entries(err)[0];
     if (first) return { ok: false, error: `${step.title}: "${step.fields.find((x) => x.id === first[0])!.label.slice(0, 70)}" - ${first[1]}` };
   }
-  for (const fd of allFields()) if (fd.type === "url" && answers[fd.id] && !/^https?:\/\//i.test(answers[fd.id])) answers[fd.id] = `https://${answers[fd.id]}`; // "mysite.com" is stored as a link
+  for (const fd of allFields(steps)) if (fd.type === "url" && answers[fd.id] && !/^https?:\/\//i.test(answers[fd.id])) answers[fd.id] = `https://${answers[fd.id]}`; // "mysite.com" is stored as a link
   return { ok: true, services, answers };
 }
 
-/** The spreadsheet id inside a pasted Google Sheets link (or a bare id). Anything else (a Form, a Doc, an .xlsx link) gives null. */
-export function sheetIdFromUrl(input: string): string | null {
-  const v = input.trim();
-  const m = v.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([\w-]{20,})/i);
-  return m ? m[1] : /^[\w-]{30,}$/.test(v) ? v : null;
+// ---------------------------------------------------------------- what was asked
+
+/** A question as it was worded when a submission came in, so later edits to the form never make old answers unreadable. */
+export type Asked = { id: string; label: string; type: FieldType; section: string };
+export const asked = (steps: readonly Step[], services: readonly ServiceId[]): Asked[] =>
+  visibleSteps(steps, services).flatMap((s) => s.fields.map((x) => ({ id: x.id, label: x.label, type: x.type, section: s.title })));
+
+export type Submission = { at: Date; services: string[]; answers: Record<string, string>; questions?: Asked[] };
+
+/** The questions behind one submission: its own snapshot; older ones (saved before snapshots) are read against the current and original forms. */
+export function questionsOf(sub: Submission, steps: readonly Step[]): Asked[] {
+  if (sub.questions) return sub.questions;
+  const known = new Map<string, Asked>();
+  for (const s of [...DEFAULT_STEPS, ...steps]) for (const x of s.fields) known.set(x.id, { id: x.id, label: x.label, type: x.type, section: s.title }); // current wording wins
+  const order = [...new Set([...allFields(steps), ...allFields(DEFAULT_STEPS)].map((x) => x.id))];
+  return order.filter((id) => sub.answers[id]).map((id) => known.get(id)!);
 }
 
-/** Sheet / Excel layout: Submitted, Services, then every question in form order (blank when it wasn't asked). */
-export const HEADER = ["Submitted", "Services", ...allFields().map((x) => x.label.slice(0, 150))];
-export const toRow = (at: Date, services: readonly ServiceId[], answers: Record<string, string>) =>
-  [at.toISOString().slice(0, 16).replace("T", " "), services.map((s) => SERVICES.find((x) => x.id === s)!.label).join(", "), ...allFields().map((x) => answers[x.id] ?? "")];
+/** Spreadsheet layout: Submitted, Services, every current question in form order, then questions since removed that still have answers. */
+export function sheetRows(subs: readonly Submission[], steps: readonly Step[]): string[][] {
+  const columns = new Map<string, string>(allFields(steps).map((x) => [x.id, x.label]));
+  for (const sub of subs) for (const q of questionsOf(sub, steps)) if (!columns.has(q.id) && sub.answers[q.id]) columns.set(q.id, `${q.label} (removed question)`);
+  const ids = [...columns.keys()];
+  return [
+    ["Submitted", "Services", ...ids.map((id) => columns.get(id)!.slice(0, 150))],
+    ...subs.map((x) => [
+      x.at.toISOString().slice(0, 16).replace("T", " "),
+      x.services.map((s) => SERVICES.find((y) => y.id === s)?.label ?? s).join(", "),
+      ...ids.map((id) => x.answers[id] ?? ""),
+    ]),
+  ];
+}
+
+// ---------------------------------------------------------------- editing the form
+
+export const FIELD_TYPES: { value: FieldType; label: string }[] = [
+  { value: "text", label: "Short answer" },
+  { value: "long", label: "Long answer" },
+  { value: "email", label: "Email" },
+  { value: "url", label: "Website link" },
+  { value: "scale", label: "Scale 1 to 10" },
+  { value: "file", label: "File upload" },
+];
+/** The dashboard, notifications and briefs rely on these three: they can be reworded, but not removed, retyped or made optional. */
+export const LOCKED: Record<string, FieldType> = { name: "text", email: "email", company: "text" };
+export const LIMITS = { steps: 40, fields: 250, title: 120, intro: 300, label: 500, help: 600, placeholder: 120 };
+
+const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+const ID = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+const RESERVED = new Set(["constructor", "prototype", "toString", "valueOf", "hasOwnProperty"]); // ids are used as object keys
+
+/** Checks and tidies an edited form before it is saved. Only known properties are kept. */
+export function validateForm(input: unknown): { ok: true; steps: Step[] } | { ok: false; error: string } {
+  const bad = (error: string) => ({ ok: false as const, error });
+  if (!Array.isArray(input) || !input.length) return bad("The form is empty.");
+  if (input.length > LIMITS.steps) return bad(`Use at most ${LIMITS.steps} sections.`);
+  const steps: Step[] = [], stepIds = new Set<string>(), fieldIds = new Set<string>();
+  for (const [i, raw] of input.entries()) {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    const title = text(r.title, LIMITS.title), id = text(r.id, 40), where = title || `Section ${i + 1}`;
+    if (!title) return bad(`Section ${i + 1} needs a title.`);
+    if (!ID.test(id) || stepIds.has(id)) return bad(`${where}: invalid section id.`);
+    stepIds.add(id);
+    const picker = i === 0;
+    if (picker !== (r.kind === "services")) return bad("The service picker must stay as the first section.");
+    const services = [...new Set(Array.isArray(r.services) ? r.services.filter(isService) : [])];
+    const list = Array.isArray(r.fields) ? r.fields : [];
+    if (picker && (list.length || services.length)) return bad("The service picker can't have its own questions.");
+    if (!picker && !list.length) return bad(`${where}: add a question or remove the section.`);
+    const fields: Field[] = [];
+    for (const [j, rawField] of list.entries()) {
+      const x = (rawField ?? {}) as Record<string, unknown>;
+      const fid = text(x.id, 40), label = text(x.label, LIMITS.label), type = x.type as FieldType;
+      if (!label) return bad(`${where}: question ${j + 1} needs a question text.`);
+      if (!ID.test(fid) || RESERVED.has(fid)) return bad(`${where}: question ${j + 1} has an invalid id.`);
+      if (fieldIds.has(fid)) return bad(`${where}: "${label.slice(0, 60)}" is duplicated.`);
+      fieldIds.add(fid);
+      if (!FIELD_TYPES.some((t) => t.value === type)) return bad(`${where}: "${label.slice(0, 60)}" has an unknown answer type.`);
+      const help = text(x.help, LIMITS.help), placeholder = text(x.placeholder, LIMITS.placeholder);
+      const field: Field = { id: fid, label, type, ...(help && { help }), ...(placeholder && { placeholder }), ...(x.required === true && { required: true }) };
+      if (Object.hasOwn(LOCKED, fid)) {
+        if (type !== LOCKED[fid] || !field.required || services.length) return bad(`"${label.slice(0, 60)}" must stay a required question that every client sees.`);
+      }
+      fields.push(field);
+    }
+    steps.push({ id, title, intro: text(r.intro, LIMITS.intro), fields, ...(picker && { kind: "services" as const }), ...(services.length && { services }) });
+  }
+  if (fieldIds.size > LIMITS.fields) return bad(`Use at most ${LIMITS.fields} questions.`);
+  const missing = Object.keys(LOCKED).filter((k) => !fieldIds.has(k));
+  if (missing.length) return bad(`The ${missing.join(", ")} question${missing.length > 1 ? "s" : ""} can't be removed.`);
+  return { ok: true, steps };
+}

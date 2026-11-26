@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Activity, BarChart3, Bell, Briefcase, Check, Cog, Inbox, Layers, LayoutDashboard, Mail, MessageSquare, Plug, ScrollText, Send, Settings, ShieldCheck, UserCog, Users, Zap } from "lucide-react";
 import { cn } from "@/lib/access/utils";
 import { navFor } from "@/lib/nav";
-import { canView, roleOfHub } from "@/lib/roles";
+import { canView, FORM_EDITOR, isFormAdmin, roleOfHub } from "@/lib/roles";
 import type { Role } from "@/lib/access/types";
 
 // Same tab list as the dashboard sidebar (lib/nav.ts), so the Access Hub sits below Automation everywhere. Icons mapped to lucide here.
@@ -15,9 +15,9 @@ const ICONS: Record<string, typeof Users> = {
   shield: ShieldCheck, plug: Plug, check: Check, bell: Bell, scroll: ScrollText, usercog: UserCog, cog: Cog,
 };
 
-export function Sidebar({ role, organizationName }: { role: Role; organizationName: string }) {
+export function Sidebar({ role, email, organizationName }: { role: Role; email: string; organizationName: string }) {
   const pathname = usePathname();
-  const groups = navFor((href) => canView(roleOfHub(role), href), role === "super_admin" || role === "account_manager" ? role : null);
+  const groups = navFor((href) => (href === FORM_EDITOR ? isFormAdmin({ username: email, email, role: roleOfHub(role) }) : canView(roleOfHub(role), href)), role === "super_admin" || role === "account_manager" ? role : null);
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-border bg-background">

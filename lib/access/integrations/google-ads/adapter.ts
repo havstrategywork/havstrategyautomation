@@ -1,21 +1,74 @@
-import type { PlatformAdapter } from "../types";
+import type { AgencyAccessResult, PlatformAdapter } from "../types";
 import { exchangeGoogleCode, refreshGoogleToken, googleAdsRequest, requireGoogleAdsConfig } from "./client";
+import { getAgencyAccessToken } from "./agency";
 
 /**
- * Real Google Ads adapter (section 6C). OAuth + token endpoints and
- * CustomerService.listAccessibleCustomers / GoogleAdsService.search are
- * standard, documented REST calls. The MCC-link step
- * (CustomerClientLinkService.mutate) is implemented against the documented
- * shape but NOT exercised against a live account in this build - verify
- * against https://developers.google.com/google-ads/api/docs/account-management/linking-manager-accounts
- * before relying on it in production (flagged here and in
- * docs/GOOGLE_ADS_APPROVAL_CHECKLIST.md).
+ * Real Google Ads adapter. Account discovery uses the CLIENT's authorization. Agency access is a manager-account (MCC) link, and Google's rule is
+ * that the manager sends the invitation and the client accepts it, so both sending and checking use the AGENCY's authorization (./agency.ts):
+ *   1. POST customers/{manager}/customerClientLinks:mutate  {operation:{create:{clientCustomer, status:"PENDING"}}}
+ *   2. the client accepts in Google Ads (Admin > Access and security > Managers)
+ *   3. customer_client_link.status becomes ACTIVE (seen by the verification sweep / "Check access").
+ * Written against developers.google.com (linking guide, REST auth); not yet exercised against a live account.
  *
- * Per section 6C: the `adwords` OAuth scope does not distinguish read-only
- * from campaign-management access - that distinction is enforced at the
- * application level only (see lib/config/permission-presets.ts
- * `googleAdsAccessLevel`), never assumed from the scope itself.
+ * The `adwords` OAuth scope does not distinguish read-only from campaign-management access - that distinction is enforced at the application
+ * level only (see lib/config/permission-presets.ts `googleAdsAccessLevel`), never assumed from the scope itself.
  */
+const ADWORDS = "https://www.googleapis.com/auth/adwords";
+const dashed = (id: string) => id.replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3");
+
+type LinkState = "ACTIVE" | "PENDING" | "REFUSED" | "NONE";
+
+/** The state of the manager link to one client account (old cancelled links can sit beside a newer one, so the best one wins). */
+async function linkState(agencyToken: string, managerId: string, customerId: string): Promise<{ ok: true; state: LinkState } | { ok: false; error: string }> {
+  const search = await googleAdsRequest<{ results?: { customerClientLink?: { status?: string } }[] }>(`/customers/${managerId}/googleAds:search`, agencyToken, {
+    method: "POST",
+    body: { query: `SELECT customer_client_link.status FROM customer_client_link WHERE customer_client_link.client_customer = 'customers/${customerId}'` },
+    loginCustomerId: managerId,
+  });
+  if (!search.ok) return { ok: false, error: search.error };
+  const statuses = (search.data.results ?? []).map((r) => r.customerClientLink?.status);
+  const state: LinkState = statuses.includes("ACTIVE") ? "ACTIVE" : statuses.includes("PENDING") ? "PENDING" : statuses.includes("REFUSED") || statuses.includes("CANCELED") ? "REFUSED" : "NONE";
+  return { ok: true, state };
+}
+
+// These sentences are shown to the client on the onboarding page; technical detail goes to the server log only.
+const accept = (managerId: string) => `We've sent an access request from our Google Ads manager account (${dashed(managerId)}). In Google Ads, open Admin > Access and security > Managers and accept it.`;
+const FOLLOW_UP = "We couldn't send the Google Ads access request automatically. Our team will follow up with you.";
+
+async function invite(agencyToken: string, managerId: string, customerId: string): Promise<AgencyAccessResult> {
+  const created = await googleAdsRequest<{ result?: { resourceName?: string } }>(`/customers/${managerId}/customerClientLinks:mutate`, agencyToken, {
+    method: "POST",
+    body: { operation: { create: { clientCustomer: `customers/${customerId}`, status: "PENDING" } } },
+    loginCustomerId: managerId,
+  });
+  if (!created.ok) {
+    console.warn(`google ads: invitation for ${customerId} failed: ${created.error}`);
+    return { ok: true, status: "agency_approval_pending", error: FOLLOW_UP };
+  }
+  return { ok: true, status: "agency_approval_pending", externalRequestId: created.data.result?.resourceName, error: accept(managerId) };
+}
+
+/** Where the link stands, sending the invitation if there is none yet (`reinvite`: also after a refusal, when the client shares the account again). */
+async function syncLink(customerId: string, reinvite: boolean): Promise<AgencyAccessResult> {
+  const config = requireGoogleAdsConfig();
+  if (!config.ok) return { ok: false, status: "agency_approval_pending", error: config.error };
+  if (!/^\d{1,19}$/.test(customerId)) return { ok: false, status: "not_requested", error: "Not a Google Ads customer id." };
+  const agency = await getAgencyAccessToken();
+  if (!agency.ok) {
+    console.warn(`google ads: ${agency.error}`);
+    return { ok: true, status: "agency_approval_pending", error: FOLLOW_UP };
+  }
+  const link = await linkState(agency.accessToken, config.managerCustomerId, customerId);
+  if (!link.ok) {
+    console.warn(`google ads: link status for ${customerId} failed: ${link.error}`);
+    return { ok: false, status: "agency_approval_pending", error: FOLLOW_UP };
+  }
+  if (link.state === "ACTIVE") return { ok: true, status: "granted" };
+  if (link.state === "PENDING") return { ok: true, status: "agency_approval_pending", error: accept(config.managerCustomerId) };
+  if (link.state === "REFUSED" && !reinvite) return { ok: true, status: "denied" };
+  return invite(agency.accessToken, config.managerCustomerId, customerId);
+}
+
 export const googleAdsAdapter: PlatformAdapter = {
   platform: "google_ads",
 
@@ -44,7 +97,7 @@ export const googleAdsAdapter: PlatformAdapter = {
       accessToken: result.data.access_token,
       refreshToken: result.data.refresh_token ?? null,
       expiresAt: new Date(Date.now() + result.data.expires_in * 1000),
-      grantedScopes: ["https://www.googleapis.com/auth/adwords"],
+      grantedScopes: [ADWORDS],
     };
   },
 
@@ -55,23 +108,23 @@ export const googleAdsAdapter: PlatformAdapter = {
   },
 
   async discoverAssets({ accessToken }) {
-    const accessible = await googleAdsRequest<{ resourceNames: string[] }>("/customers:listAccessibleCustomers", accessToken);
+    const accessible = await googleAdsRequest<{ resourceNames?: string[] }>("/customers:listAccessibleCustomers", accessToken);
     if (!accessible.ok) return { ok: false, assets: [], error: accessible.error };
 
     const customerIds = (accessible.data.resourceNames ?? []).map((rn) => rn.split("/")[1]);
     const assets = await Promise.all(
       customerIds.map(async (id) => {
-        const search = await googleAdsRequest<{ results?: { customer?: { descriptiveName?: string; id?: string; manager?: boolean } }[] }>(
-          `/customers/${id}/googleAds:search`,
-          accessToken,
-          { method: "POST", body: { query: "SELECT customer.descriptive_name, customer.id, customer.manager FROM customer LIMIT 1" } },
-        );
+        // The client's own user is querying their own account: no login-customer-id.
+        const search = await googleAdsRequest<{ results?: { customer?: { descriptiveName?: string; id?: string; manager?: boolean } }[] }>(`/customers/${id}/googleAds:search`, accessToken, {
+          method: "POST",
+          body: { query: "SELECT customer.descriptive_name, customer.id, customer.manager FROM customer LIMIT 1" },
+        });
         const row = search.ok ? search.data.results?.[0]?.customer : undefined;
         return {
           externalAssetId: id,
-          assetName: row?.descriptiveName ?? `Google Ads account ${id}`,
+          assetName: row?.descriptiveName ?? `Google Ads account ${dashed(id)}`,
           assetType: row?.manager ? "google_ads_manager" : "google_ads_customer",
-          availablePermissions: ["https://www.googleapis.com/auth/adwords"],
+          availablePermissions: [ADWORDS],
         };
       }),
     );
@@ -79,59 +132,18 @@ export const googleAdsAdapter: PlatformAdapter = {
     return { ok: true, assets: assets.filter((a) => a.assetType === "google_ads_customer") };
   },
 
-  async requestAgencyAccess({ accessToken, asset }) {
-    const config = requireGoogleAdsConfig();
-    if (!config.ok) return { ok: false, status: "not_requested", error: config.error };
-
-    const result = await googleAdsRequest(`/customers/${config.managerCustomerId}/customerClientLinks:mutate`, accessToken, {
-      method: "POST",
-      body: {
-        operations: [
-          {
-            create: {
-              clientCustomer: `customers/${asset.externalAssetId}`,
-              status: "PENDING",
-            },
-          },
-        ],
-      },
-    });
-
-    if (!result.ok) {
-      return {
-        ok: true,
-        status: "agency_approval_pending",
-        error: `Automated manager-link invitation failed (${result.error}). Guide the client to approve the pending link in their Google Ads UI under Admin > Access and security > Managers.`,
-      };
-    }
-    return { ok: true, status: "agency_approval_pending" };
+  async requestAgencyAccess({ asset }) {
+    return syncLink(asset.externalAssetId, true);
   },
 
-  async verifyAgencyAccess({ accessToken, asset }) {
-    const config = requireGoogleAdsConfig();
-    if (!config.ok) return { ok: false, status: "agency_approval_pending", error: config.error };
-
-    const search = await googleAdsRequest<{ results?: { customerClientLink?: { status?: string } }[] }>(
-      `/customers/${config.managerCustomerId}/googleAds:search`,
-      accessToken,
-      {
-        method: "POST",
-        body: {
-          query: `SELECT customer_client_link.status FROM customer_client_link WHERE customer_client_link.client_customer = 'customers/${asset.externalAssetId}'`,
-        },
-      },
-    );
-    if (!search.ok) return { ok: false, status: "agency_approval_pending", error: search.error };
-    const status = search.data.results?.[0]?.customerClientLink?.status;
-    if (status === "ACTIVE") return { ok: true, status: "granted" };
-    if (status === "REFUSED" || status === "CANCELED") return { ok: true, status: "denied" };
-    return { ok: true, status: "agency_approval_pending" };
+  async verifyAgencyAccess({ asset }) {
+    return syncLink(asset.externalAssetId, false);
   },
 
   async verifyPermissions({ assets, grantedScopes }) {
     // The adwords scope is all-or-nothing - "permission" here just reflects
     // whether the OAuth grant (still) includes it, not a per-asset detail.
-    const hasScope = grantedScopes.includes("https://www.googleapis.com/auth/adwords");
+    const hasScope = grantedScopes.includes(ADWORDS);
     return { ok: true, assets: assets.map((a) => ({ externalAssetId: a.externalAssetId, verified: hasScope, grantedPermissions: hasScope ? a.availablePermissions : [] })) };
   },
 
@@ -155,7 +167,7 @@ export const googleAdsAdapter: PlatformAdapter = {
     if (tokenExpiry && tokenExpiry.getTime() < Date.now()) {
       return { health: "needs_attention", tokenValidityStatus: "expired", detail: "Access token expired and refresh has not yet been attempted." };
     }
-    const result = await googleAdsRequest<{ resourceNames: string[] }>("/customers:listAccessibleCustomers", accessToken);
+    const result = await googleAdsRequest<{ resourceNames?: string[] }>("/customers:listAccessibleCustomers", accessToken);
     if (!result.ok) return { health: "error", tokenValidityStatus: "invalid", detail: result.error };
     return { health: "healthy", tokenValidityStatus: "valid" };
   },

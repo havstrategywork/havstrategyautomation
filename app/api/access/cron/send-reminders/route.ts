@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { requireCronSecret } from "@/lib/access/api/cron-guard";
 import { getDb } from "@/lib/access/db";
-import * as schema from "@/lib/access/db/schema";
+import { listPendingInvitationsWithClients } from "@/lib/access/db/queries/invitations";
 import { notify } from "@/lib/access/notifications";
 
 const STALL_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3 days with no completion
@@ -17,19 +16,7 @@ export async function POST(req: Request) {
   const db = dbResult.db;
 
   const stalledCutoff = new Date(Date.now() - STALL_THRESHOLD_MS);
-  const candidates = await db
-    .select({ invitation: schema.onboardingInvitations, client: schema.clients })
-    .from(schema.onboardingInvitations)
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.onboardingInvitations.clientId))
-    .where(
-      and(
-        isNull(schema.onboardingInvitations.completedAt),
-        isNull(schema.onboardingInvitations.revokedAt),
-        isNull(schema.clients.archivedAt),
-        gt(schema.onboardingInvitations.expiresAt, new Date()),
-        lt(schema.onboardingInvitations.createdAt, stalledCutoff),
-      ),
-    );
+  const candidates = await listPendingInvitationsWithClients(db, { extra: { expiresAt: { $gt: new Date() }, createdAt: { $lt: stalledCutoff } } });
 
   let reminded = 0;
   for (const { client } of candidates) {

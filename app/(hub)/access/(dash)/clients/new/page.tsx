@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/access/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/access/ui/card";
 import { useToast } from "@/components/access/ui/toast";
 import { apiFetch } from "@/lib/access/api-client";
-import { PHASE_1_PLATFORMS, PERMISSION_PRESETS } from "@/lib/access/types";
+import { PLATFORMS, PERMISSION_PRESETS } from "@/lib/access/types";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
 import { PERMISSION_PRESET_DEFINITIONS } from "@/lib/access/config/permission-presets";
 
@@ -153,10 +153,10 @@ export default function NewClientPage() {
         <Card>
           <CardHeader>
             <CardTitle>Platforms to request</CardTitle>
-            <CardDescription>Only Phase 1 platforms can be requested today. Everything else is coming soon.</CardDescription>
+            <CardDescription>Pick the accounts this client should connect.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {PHASE_1_PLATFORMS.map((platform) => (
+            {PLATFORMS.map((platform) => (
               <label key={platform} className="flex items-center gap-2.5 rounded-md border border-border p-3 text-sm">
                 <Checkbox checked={platforms.includes(platform)} onCheckedChange={() => togglePlatform(platform)} />
                 <span className="font-medium text-foreground">{PLATFORM_CATALOG[platform].label}</span>

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, ilike, isNull, or, sql, type SQL } from "drizzle-orm";
-import type { AnyDb } from "@/lib/access/db";
-import * as schema from "@/lib/access/db/schema";
+import type { Filter } from "mongodb";
+import { NO_ID, type AnyDb } from "@/lib/access/db";
+import type { Client } from "@/lib/access/db/schema-types";
 import type { OnboardingStatus, PermissionPreset } from "@/lib/access/types";
 
 export interface CreateClientInput {
@@ -20,7 +20,7 @@ export interface CreateClientInput {
 
 export async function createClient(db: AnyDb, input: CreateClientInput) {
   const id = randomUUID();
-  await db.insert(schema.clients).values({
+  await db.clients.insertOne({
     id,
     organizationId: input.organizationId,
     brandName: input.brandName,
@@ -34,30 +34,25 @@ export async function createClient(db: AnyDb, input: CreateClientInput) {
     permissionPreset: input.permissionPreset ?? null,
     customPermissions: input.customPermissions ?? null,
     onboardingStatus: "not_started",
+    archivedAt: null,
+    createdAt: new Date(),
   });
   return id;
 }
 
 export async function getClientById(db: AnyDb, organizationId: string, clientId: string) {
-  const rows = await db
-    .select()
-    .from(schema.clients)
-    .where(and(eq(schema.clients.id, clientId), eq(schema.clients.organizationId, organizationId)))
-    .limit(1);
-  return rows[0] ?? null;
+  return db.clients.findOne({ id: clientId, organizationId }, NO_ID);
 }
 
 /**
  * Deliberately unscoped by organization. ONLY for the public onboarding
  * routes, where the caller's authorization is a valid invitation token (not
- * a session) and the client id comes from that token's own
- * onboarding_invitations.client_id FK, never from attacker-supplied input -
- * see lib/public-onboarding.ts. Every other lookup in this codebase must go
- * through getClientById above.
+ * a session) and the client id comes from that token's own invitation
+ * record, never from attacker-supplied input - see lib/public-onboarding.ts.
+ * Every other lookup in this codebase must go through getClientById above.
  */
 export async function getClientByIdTrusted(db: AnyDb, clientId: string) {
-  const rows = await db.select().from(schema.clients).where(eq(schema.clients.id, clientId)).limit(1);
-  return rows[0] ?? null;
+  return db.clients.findOne({ id: clientId }, NO_ID);
 }
 
 export interface ListClientsOptions {
@@ -71,33 +66,29 @@ export interface ListClientsOptions {
   sortDir?: "asc" | "desc";
 }
 
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export async function listClients(db: AnyDb, organizationId: string, opts: ListClientsOptions = {}) {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 20));
 
-  const conditions: SQL[] = [eq(schema.clients.organizationId, organizationId)];
-  if (!opts.includeArchived) conditions.push(isNull(schema.clients.archivedAt));
-  if (opts.status) conditions.push(eq(schema.clients.onboardingStatus, opts.status));
-  if (opts.assignedManagerId) conditions.push(eq(schema.clients.assignedManagerId, opts.assignedManagerId));
+  const filter: Filter<Client> = { organizationId };
+  if (!opts.includeArchived) filter.archivedAt = null;
+  if (opts.status) filter.onboardingStatus = opts.status;
+  if (opts.assignedManagerId) filter.assignedManagerId = opts.assignedManagerId;
   if (opts.search) {
-    const term = `%${opts.search}%`;
-    const searchCondition = or(ilike(schema.clients.brandName, term), ilike(schema.clients.contactEmail, term));
-    if (searchCondition) conditions.push(searchCondition);
+    const term = new RegExp(escapeRegex(opts.search), "i");
+    filter.$or = [{ brandName: term }, { contactEmail: term }];
   }
 
-  const sortColumn = opts.sortBy === "onboardingStatus" ? schema.clients.onboardingStatus
-    : opts.sortBy === "brandName" ? schema.clients.brandName
-    : schema.clients.createdAt;
-  const orderFn = opts.sortDir === "asc" ? asc : desc;
+  const sortField = opts.sortBy === "onboardingStatus" ? "onboardingStatus" : opts.sortBy === "brandName" ? "brandName" : "createdAt";
+  const dir = opts.sortDir === "asc" ? 1 : -1;
 
-  const where = and(...conditions);
-
-  const [rows, totalRows] = await Promise.all([
-    db.select().from(schema.clients).where(where).orderBy(orderFn(sortColumn)).limit(pageSize).offset((page - 1) * pageSize),
-    db.select({ count: sql<number>`count(*)` }).from(schema.clients).where(where),
+  const [rows, total] = await Promise.all([
+    db.clients.find(filter, NO_ID).sort({ [sortField]: dir, id: 1 }).skip((page - 1) * pageSize).limit(pageSize).toArray(),
+    db.clients.countDocuments(filter),
   ]);
-
-  return { rows, total: Number(totalRows[0]?.count ?? 0), page, pageSize };
+  return { rows, total, page, pageSize };
 }
 
 export async function updateClient(
@@ -106,39 +97,31 @@ export async function updateClient(
   clientId: string,
   patch: Partial<Omit<CreateClientInput, "organizationId">> & { onboardingStatus?: OnboardingStatus },
 ) {
-  const [row] = await db
-    .update(schema.clients)
-    .set(patch)
-    .where(and(eq(schema.clients.id, clientId), eq(schema.clients.organizationId, organizationId)))
-    .returning();
-  return row ?? null;
+  const set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<Client>;
+  if (typeof set.contactEmail === "string") set.contactEmail = set.contactEmail.toLowerCase();
+  if (Object.keys(set).length === 0) return getClientById(db, organizationId, clientId);
+  return db.clients.findOneAndUpdate({ id: clientId, organizationId }, { $set: set }, { returnDocument: "after", ...NO_ID });
 }
 
 export async function archiveClient(db: AnyDb, organizationId: string, clientId: string) {
-  await db
-    .update(schema.clients)
-    .set({ archivedAt: new Date(), onboardingStatus: "archived" })
-    .where(and(eq(schema.clients.id, clientId), eq(schema.clients.organizationId, organizationId)));
+  await db.clients.updateOne({ id: clientId, organizationId }, { $set: { archivedAt: new Date(), onboardingStatus: "archived" } });
 }
 
 export async function unarchiveClient(db: AnyDb, organizationId: string, clientId: string) {
-  await db
-    .update(schema.clients)
-    .set({ archivedAt: null, onboardingStatus: "in_progress" })
-    .where(and(eq(schema.clients.id, clientId), eq(schema.clients.organizationId, organizationId)));
+  await db.clients.updateOne({ id: clientId, organizationId }, { $set: { archivedAt: null, onboardingStatus: "in_progress" } });
 }
 
 /**
- * Recomputes clients.onboarding_status from its platform_connections, and
- * persists it. Called after any connection/asset/agency-access mutation so
- * the dashboard table never has to join live to show a status (section 8).
+ * Recomputes the client's onboarding status from its platform connections,
+ * and persists it. Called after any connection/asset/agency-access mutation
+ * so the dashboard table never has to join live to show a status.
  */
 export async function recomputeOnboardingStatus(db: AnyDb, clientId: string) {
-  const client = await db.select().from(schema.clients).where(eq(schema.clients.id, clientId)).limit(1);
-  if (!client[0] || client[0].archivedAt) return;
+  const client = await db.clients.findOne({ id: clientId }, NO_ID);
+  if (!client || client.archivedAt) return;
 
-  const connections = await db.select().from(schema.platformConnections).where(eq(schema.platformConnections.clientId, clientId));
-  const required = client[0].requiredPlatforms as string[];
+  const connections = await db.connections.find({ clientId }, NO_ID).toArray();
+  const required = client.requiredPlatforms;
 
   let status: OnboardingStatus = "not_started";
   if (connections.length === 0) {
@@ -153,7 +136,7 @@ export async function recomputeOnboardingStatus(db: AnyDb, clientId: string) {
     status = allVerified ? "completed" : "in_progress";
   }
 
-  await db.update(schema.clients).set({ onboardingStatus: status }).where(eq(schema.clients.id, clientId));
+  await db.clients.updateOne({ id: clientId }, { $set: { onboardingStatus: status } });
   return status;
 }
 
@@ -169,8 +152,8 @@ export interface DashboardKpis {
 }
 
 export async function getDashboardKpis(db: AnyDb, organizationId: string): Promise<DashboardKpis> {
-  const clients = await db.select().from(schema.clients).where(and(eq(schema.clients.organizationId, organizationId), isNull(schema.clients.archivedAt)));
-  const connections = await db.select().from(schema.platformConnections).where(eq(schema.platformConnections.organizationId, organizationId));
+  const clients = await db.clients.find({ organizationId, archivedAt: null }, NO_ID).toArray();
+  const connections = await db.connections.find({ organizationId }, NO_ID).toArray();
 
   const totalClients = clients.length;
   const fullyOnboarded = clients.filter((c) => c.onboardingStatus === "completed").length;
@@ -179,11 +162,10 @@ export async function getDashboardKpis(db: AnyDb, organizationId: string): Promi
   const expiredAuthorizations = connections.filter((c) => c.oauthAuthorizationStatus === "authorization_expired" || c.tokenValidityStatus === "expired").length;
   const accountsRequiringAttention = connections.filter((c) => c.connectionHealth === "needs_attention" || c.connectionHealth === "error").length;
 
-  const invitations = await db
-    .select({ createdAt: schema.onboardingInvitations.createdAt, completedAt: schema.onboardingInvitations.completedAt })
-    .from(schema.onboardingInvitations)
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.onboardingInvitations.clientId))
-    .where(and(eq(schema.clients.organizationId, organizationId), sql`${schema.onboardingInvitations.completedAt} is not null`));
+  const clientIds = clients.map((c) => c.id);
+  const invitations = clientIds.length
+    ? await db.invitations.find({ clientId: { $in: clientIds }, completedAt: { $ne: null } }, NO_ID).toArray()
+    : [];
 
   const durationsHours = invitations.map((i) => (i.completedAt!.getTime() - i.createdAt.getTime()) / 3_600_000);
   const avgOnboardingCompletionHours = durationsHours.length ? durationsHours.reduce((a, b) => a + b, 0) / durationsHours.length : null;

@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, ne } from "drizzle-orm";
-import type { AnyDb } from "@/lib/access/db";
-import * as schema from "@/lib/access/db/schema";
+import { NO_ID, type AnyDb } from "@/lib/access/db";
+import type { Client, PlatformConnection } from "@/lib/access/db/schema-types";
 import type {
   AgencyAccessStatus,
   AssetSelectionStatus,
@@ -12,30 +11,28 @@ import type {
 } from "@/lib/access/types";
 
 export async function getConnection(db: AnyDb, clientId: string, platform: string) {
-  const rows = await db
-    .select()
-    .from(schema.platformConnections)
-    .where(and(eq(schema.platformConnections.clientId, clientId), eq(schema.platformConnections.platform, platform)))
-    .limit(1);
-  return rows[0] ?? null;
+  return db.connections.findOne({ clientId, platform }, NO_ID);
 }
 
 export async function listConnectionsForClient(db: AnyDb, clientId: string) {
-  return db.select().from(schema.platformConnections).where(eq(schema.platformConnections.clientId, clientId));
+  return db.connections.find({ clientId }, NO_ID).toArray();
 }
 
 /** Every connection that has an active application authorization and is therefore worth periodically re-checking. */
 export async function listActiveConnections(db: AnyDb) {
-  return db.select().from(schema.platformConnections).where(eq(schema.platformConnections.oauthAuthorizationStatus, "application_authorized"));
+  return db.connections.find({ oauthAuthorizationStatus: "application_authorized" }, NO_ID).toArray();
 }
 
 /** Org-wide remediation view (Access Management page) - every connection whose health isn't "healthy", with its client. */
-export async function listConnectionsNeedingAttention(db: AnyDb, organizationId: string) {
-  return db
-    .select({ connection: schema.platformConnections, client: schema.clients })
-    .from(schema.platformConnections)
-    .innerJoin(schema.clients, eq(schema.clients.id, schema.platformConnections.clientId))
-    .where(and(eq(schema.platformConnections.organizationId, organizationId), ne(schema.platformConnections.connectionHealth, "healthy")));
+export async function listConnectionsNeedingAttention(db: AnyDb, organizationId: string): Promise<{ connection: PlatformConnection; client: Client }[]> {
+  const connections = await db.connections.find({ organizationId, connectionHealth: { $ne: "healthy" } }, NO_ID).toArray();
+  if (!connections.length) return [];
+  const clients = await db.clients.find({ id: { $in: [...new Set(connections.map((c) => c.clientId))] } }, NO_ID).toArray();
+  const byId = new Map(clients.map((c) => [c.id, c]));
+  return connections.flatMap((connection) => {
+    const client = byId.get(connection.clientId);
+    return client ? [{ connection, client }] : [];
+  });
 }
 
 /** Creates the connection row the moment an invitation requesting this platform is generated (status: invitation_sent). */
@@ -43,14 +40,30 @@ export async function ensureConnectionShell(db: AnyDb, input: { organizationId: 
   const existing = await getConnection(db, input.clientId, input.platform);
   if (existing) return existing;
 
-  const id = randomUUID();
-  await db.insert(schema.platformConnections).values({
-    id,
-    organizationId: input.organizationId,
-    clientId: input.clientId,
-    platform: input.platform,
-    oauthAuthorizationStatus: "invitation_sent",
-  });
+  const now = new Date();
+  try {
+    await db.connections.insertOne({
+      id: randomUUID(),
+      organizationId: input.organizationId,
+      clientId: input.clientId,
+      platform: input.platform,
+      providerUserId: null,
+      oauthAuthorizationStatus: "invitation_sent",
+      tokenValidityStatus: "not_applicable",
+      assetSelectionStatus: "not_required",
+      agencyAccessStatus: "not_applicable",
+      grantedScopes: [],
+      tokenReference: null,
+      tokenExpiry: null,
+      lastVerifiedAt: null,
+      connectionHealth: "healthy",
+      errorMessage: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch (e) {
+    if ((e as { code?: number }).code !== 11000) throw e; // two requests raced: the unique (client, platform) index keeps one
+  }
   return getConnection(db, input.clientId, input.platform);
 }
 
@@ -71,23 +84,18 @@ export async function updateConnectionStatus(
     errorMessage: string | null;
   }>,
 ) {
-  const [row] = await db
-    .update(schema.platformConnections)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(eq(schema.platformConnections.id, connectionId))
-    .returning();
-  return row ?? null;
+  const set = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  return db.connections.findOneAndUpdate({ id: connectionId }, { $set: { ...set, updatedAt: new Date() } }, { returnDocument: "after", ...NO_ID });
 }
 
 export async function getConnectionById(db: AnyDb, connectionId: string) {
-  const rows = await db.select().from(schema.platformConnections).where(eq(schema.platformConnections.id, connectionId)).limit(1);
-  return rows[0] ?? null;
+  return db.connections.findOne({ id: connectionId }, NO_ID);
 }
 
 // --- Assets -----------------------------------------------------------
 
 export async function listAssetsForConnection(db: AnyDb, connectionId: string) {
-  return db.select().from(schema.connectedAssets).where(eq(schema.connectedAssets.connectionId, connectionId));
+  return db.assets.find({ connectionId }, NO_ID).toArray();
 }
 
 export async function replaceSelectedAssets(
@@ -95,8 +103,9 @@ export async function replaceSelectedAssets(
   connectionId: string,
   assets: { externalAssetId: string; assetName: string; assetType: string; grantedPermissions: string[] }[],
 ) {
-  await db.delete(schema.connectedAssets).where(eq(schema.connectedAssets.connectionId, connectionId));
+  await db.assets.deleteMany({ connectionId });
   if (assets.length === 0) return [];
+  const now = new Date();
   const rows = assets.map((a) => ({
     id: randomUUID(),
     connectionId,
@@ -104,18 +113,17 @@ export async function replaceSelectedAssets(
     assetName: a.assetName,
     assetType: a.assetType,
     grantedPermissions: a.grantedPermissions,
-    verificationStatus: "selected" as const,
-    selectedAt: new Date(),
+    verificationStatus: "selected",
+    selectedAt: now,
+    verifiedAt: null,
+    createdAt: now,
   }));
-  await db.insert(schema.connectedAssets).values(rows);
+  await db.assets.insertMany(rows.map((r) => ({ ...r })));
   return rows;
 }
 
 export async function updateAssetVerification(db: AnyDb, assetId: string, status: string, verifiedAt?: Date) {
-  await db
-    .update(schema.connectedAssets)
-    .set({ verificationStatus: status, verifiedAt: verifiedAt ?? null })
-    .where(eq(schema.connectedAssets.id, assetId));
+  await db.assets.updateOne({ id: assetId }, { $set: { verificationStatus: status, verifiedAt: verifiedAt ?? null } });
 }
 
 // --- Access requests ----------------------------------------------------
@@ -125,7 +133,7 @@ export async function createAccessRequest(
   input: { connectionId: string; assetId?: string | null; externalRequestId?: string | null; requestedPermissions: string[]; requestStatus: string },
 ) {
   const id = randomUUID();
-  await db.insert(schema.accessRequests).values({
+  await db.accessRequests.insertOne({
     id,
     connectionId: input.connectionId,
     assetId: input.assetId ?? null,
@@ -133,12 +141,13 @@ export async function createAccessRequest(
     requestedPermissions: input.requestedPermissions,
     requestStatus: input.requestStatus,
     approvedAt: input.requestStatus === "approved" ? new Date() : null,
+    createdAt: new Date(),
   });
   return id;
 }
 
 export async function listAccessRequestsForConnection(db: AnyDb, connectionId: string) {
-  return db.select().from(schema.accessRequests).where(eq(schema.accessRequests.connectionId, connectionId));
+  return db.accessRequests.find({ connectionId }, NO_ID).toArray();
 }
 
 // --- Credentials (privileged only - never return these from a route handler) ---
@@ -148,33 +157,30 @@ export async function upsertCredentials(
   connectionId: string,
   input: { encryptedAccessToken: string | null; encryptedRefreshToken: string | null; expiresAt: Date | null },
 ) {
-  const existing = await db.select().from(schema.encryptedCredentials).where(eq(schema.encryptedCredentials.connectionId, connectionId)).limit(1);
-  if (existing[0]) {
-    await db
-      .update(schema.encryptedCredentials)
-      .set({ ...input, updatedAt: new Date() })
-      .where(eq(schema.encryptedCredentials.connectionId, connectionId));
-    return existing[0].id;
+  const existing = await db.credentials.findOne({ connectionId }, NO_ID);
+  if (existing) {
+    await db.credentials.updateOne({ connectionId }, { $set: { ...input, updatedAt: new Date() } });
+    return existing.id;
   }
   const id = randomUUID();
-  await db.insert(schema.encryptedCredentials).values({ id, connectionId, ...input });
-  await db.update(schema.platformConnections).set({ tokenReference: id }).where(eq(schema.platformConnections.id, connectionId));
+  const now = new Date();
+  await db.credentials.insertOne({ id, connectionId, ...input, encryptionKeyVersion: 1, createdAt: now, updatedAt: now });
+  await db.connections.updateOne({ id: connectionId }, { $set: { tokenReference: id } });
   return id;
 }
 
 export async function getCredentials(db: AnyDb, connectionId: string) {
-  const rows = await db.select().from(schema.encryptedCredentials).where(eq(schema.encryptedCredentials.connectionId, connectionId)).limit(1);
-  return rows[0] ?? null;
+  return db.credentials.findOne({ connectionId }, NO_ID);
 }
 
 export async function deleteCredentials(db: AnyDb, connectionId: string) {
-  await db.delete(schema.encryptedCredentials).where(eq(schema.encryptedCredentials.connectionId, connectionId));
+  await db.credentials.deleteMany({ connectionId });
 }
 
 /**
- * Combines the four independently-tracked status fields (section 7) into
- * the single display status the UI shows as one badge. Always derived,
- * never stored, so the four underlying fields stay the real source of truth.
+ * Combines the four independently-tracked status fields into the single
+ * display status the UI shows as one badge. Always derived, never stored,
+ * so the four underlying fields stay the real source of truth.
  */
 export function toDisplayStatus(conn: {
   oauthAuthorizationStatus: string;

@@ -3,7 +3,7 @@ import { withDb, isResponse } from "@/lib/access/api/guard";
 import { resolveInvitation } from "@/lib/access/public-onboarding";
 import { getConnection } from "@/lib/access/db/queries/connections";
 import { disconnectConnection } from "@/lib/access/integrations/oauth-flow";
-import { isPhase1Platform } from "@/lib/access/types";
+import { isPlatform } from "@/lib/access/types";
 
 /** Section 10/15/16: the client can revoke access at any time, from their own onboarding page. */
 export async function POST(_req: Request, { params }: { params: Promise<{ token: string; platform: string }> }) {
@@ -11,7 +11,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ token:
   if (isResponse(dbGuard)) return dbGuard;
   const { db } = dbGuard;
   const { token, platform } = await params;
-  if (!isPhase1Platform(platform)) return NextResponse.json({ error: "Unsupported platform." }, { status: 400 });
+  if (!isPlatform(platform)) return NextResponse.json({ error: "Unsupported platform." }, { status: 400 });
 
   const resolved = await resolveInvitation(db, token);
   if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });

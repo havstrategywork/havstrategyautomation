@@ -6,7 +6,18 @@ export type Role = (typeof ROLES)[number];
 export const roleOf = (r?: string): Role => (ROLES as readonly string[]).includes(r ?? "") ? (r as Role) : "admin";
 
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
-const ADMIN_ONLY = ["/users", "/automation", "/social/orgs", "/social/connect", "/onboarding-responses", "/settings"];
+const ADMIN_ONLY = ["/users", "/automation", "/social/orgs", "/social/connect", "/onboarding-responses", "/onboarding-form", "/settings"];
+
+// The onboarding form's questions are editable by ONE login only (not every admin). It is reached from the "Admin" tab on the public form.
+export const FORM_ADMIN = "havstrategy"; // the team's one login
+export const FORM_EDITOR = "/onboarding-form";
+export const isFormAdminAccount = (u: { username: string; email?: string | null }) => u.username === FORM_ADMIN || u.email === FORM_ADMIN;
+export const isFormAdmin = (u: { username: string; email?: string | null; role: Role }) => u.role === "admin" && isFormAdminAccount(u);
+// That account is locked against other admins, or "only this login edits the form" would be one password reset away from untrue: nobody can delete it or
+// change its role in the app, and only the account itself can change its password. (scripts/set-user.mjs, which needs the database credentials, still can.)
+export const FORM_ADMIN_LOCKED = `${FORM_ADMIN} is a protected account: it can't be deleted or given another role, and only that account can change its password.`;
+/** Where a sign-in may send someone besides their home page. A fixed list, so `?next=` can never be used to redirect elsewhere. */
+export const safeNext = (next: unknown) => (next === FORM_EDITOR ? FORM_EDITOR : null);
 
 /** May this role open this dashboard path? (/login/* is always allowed: logout must work for everyone.) */
 export function canView(role: Role, p: string) {

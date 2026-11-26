@@ -7,7 +7,7 @@ import { Icon } from "@/components/ui";
 import { navFor } from "@/lib/nav";
 import MuiProviders from "@/components/mui/Providers";
 import { currentUser } from "@/lib/session";
-import { canView, hasApiKey, hubRoleOf } from "@/lib/roles";
+import { canView, FORM_EDITOR, hasApiKey, hubRoleOf, isFormAdmin } from "@/lib/roles";
 
 // Self-hosted at build time by next/font (no runtime request to Google, so the CSP stays 'self').
 const sans = Geist({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -28,7 +28,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
             <aside className="side">
               <div className="brand"><div className="logo"><img src="/havstrategy-logo.png" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
               <nav aria-label="Main">
-                {navFor((href) => canView(user.role, href), hubRoleOf(user.role)).map((g) => (
+                {navFor((href) => (href === FORM_EDITOR ? isFormAdmin(user) : canView(user.role, href)), hubRoleOf(user.role)).map((g) => (
                   <div key={g.group} className="nav-group">
                     <div className="nav-label">{g.group}</div>
                     {g.items.map(({ href, label, icon }) => <NavLink key={href} href={href}><Icon name={icon} /><span>{label}</span></NavLink>)}

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
-import { ROLES, roleOf, type Role } from "@/lib/roles";
+import { FORM_ADMIN_LOCKED, isFormAdminAccount, ROLES, roleOf, type Role } from "@/lib/roles";
 import { currentUser } from "@/lib/session";
 import { Avatar, PageHead, ago } from "@/components/ui";
 import Select from "@/components/mui/Select";
@@ -39,6 +39,7 @@ async function setRole(f: FormData) {
   await admin();
   const id = new ObjectId(String(f.get("id"))), { users } = await db(), u = await users.findOne({ _id: id });
   if (!u) return done("No such user.");
+  if (isFormAdminAccount(u)) return done(FORM_ADMIN_LOCKED);
   if (roleOf(u.role) === "admin" && role(f) !== "admin" && !(await adminsLeft(id))) return done("Keep at least one admin.");
   await users.updateOne({ _id: id }, { $set: { role: role(f) } });
   revalidatePath("/users"); done(`${u.username} is now ${role(f)}.`);
@@ -46,9 +47,12 @@ async function setRole(f: FormData) {
 
 async function resetPw(f: FormData) {
   "use server";
-  await admin();
+  const me = await admin();
   const id = new ObjectId(String(f.get("id"))), pw = String(f.get("password") ?? ""), { users, sessions } = await db();
   if (pw.length < 10) return done("Password needs at least 10 characters.");
+  const target = await users.findOne({ _id: id });
+  if (!target) return done("No such user.");
+  if (isFormAdminAccount(target) && String(id) !== String(me.id)) return done(FORM_ADMIN_LOCKED);
   await users.updateOne({ _id: id }, { $set: { passwordHash: await hashPassword(pw), passwordChangedAt: new Date() }, $unset: { fails: "", lockedUntil: "", lockCount: "" } });
   await sessions.deleteMany({ userId: id }); // signs them out everywhere
   done("Password changed; they were signed out.");
@@ -60,6 +64,7 @@ async function remove(f: FormData) {
   const id = new ObjectId(String(f.get("id"))), { users, sessions } = await db(), u = await users.findOne({ _id: id });
   if (!u) return done("No such user.");
   if (String(id) === String(me.id)) return done("You can't delete yourself.");
+  if (isFormAdminAccount(u)) return done(FORM_ADMIN_LOCKED);
   if (roleOf(u.role) === "admin" && !(await adminsLeft(id))) return done("Keep at least one admin.");
   await users.deleteOne({ _id: id }); await sessions.deleteMany({ userId: id });
   revalidatePath("/users"); done(`Deleted ${u.username}.`);
@@ -91,14 +96,14 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
           <thead><tr><th>User</th><th>Role</th><th>Created</th><th>New password</th><th /></tr></thead>
           <tbody>
             {list.map((u) => {
-              const you = String(u._id) === String(me.id);
+              const you = String(u._id) === String(me.id), locked = isFormAdminAccount(u);
               return (
                 <tr key={String(u._id)}>
-                  <td><div className="who"><Avatar name={u.username} /><div className="two"><b>{u.username}</b>{you && <small>you</small>}</div></div></td>
-                  <td><form action={setRole} className="row" style={{ flexWrap: "nowrap" }}><input type="hidden" name="id" value={String(u._id)} />{sel(roleOf(u.role))}<button className="ghost small-btn">Save</button></form></td>
+                  <td><div className="who"><Avatar name={u.username} /><div className="two"><b>{u.username}</b>{(you || locked) && <small>{[you && "you", locked && "protected"].filter(Boolean).join(" · ")}</small>}</div></div></td>
+                  <td>{locked ? <span className="muted">{roleOf(u.role)} (fixed)</span> : <form action={setRole} className="row" style={{ flexWrap: "nowrap" }}><input type="hidden" name="id" value={String(u._id)} />{sel(roleOf(u.role))}<button className="ghost small-btn">Save</button></form>}</td>
                   <td className="muted" style={{ whiteSpace: "nowrap" }}>{ago(u.createdAt)}</td>
-                  <td><form action={resetPw} className="row" style={{ flexWrap: "nowrap" }}><input type="hidden" name="id" value={String(u._id)} /><input name="password" type="password" minLength={10} maxLength={200} required autoComplete="new-password" placeholder="10+ characters" /><button className="ghost small-btn">Reset</button></form></td>
-                  <td>{!you && <form action={remove}><input type="hidden" name="id" value={String(u._id)} /><button className="ghost small-btn" style={{ color: "var(--bad)" }}>Delete</button></form>}</td>
+                  <td>{locked && !you ? <span className="muted small">Only this account can change it</span> : <form action={resetPw} className="row" style={{ flexWrap: "nowrap" }}><input type="hidden" name="id" value={String(u._id)} /><input name="password" type="password" minLength={10} maxLength={200} required autoComplete="new-password" placeholder="10+ characters" /><button className="ghost small-btn">Reset</button></form>}</td>
+                  <td>{!you && !locked && <form action={remove}><input type="hidden" name="id" value={String(u._id)} /><button className="ghost small-btn" style={{ color: "var(--bad)" }}>Delete</button></form>}</td>
                 </tr>
               );
             })}

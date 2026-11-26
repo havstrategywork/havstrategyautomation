@@ -11,7 +11,10 @@ import { z } from "zod";
 export type AppMode = "demo" | "production";
 
 export function getAppMode(): AppMode {
-  return process.env.APP_MODE === "production" ? "production" : "demo";
+  // Demo = simulated Meta/Google authorization screens (no real accounts contacted); production = the real providers. The data is MongoDB either way.
+  // A hosted (Vercel) deploy is production unless someone explicitly forces demo.
+  if (process.env.APP_MODE === "demo") return "demo";
+  return process.env.APP_MODE === "production" || process.env.VERCEL ? "production" : "demo";
 }
 
 export function isDemoMode(): boolean {
@@ -26,7 +29,6 @@ export function getAppUrl(): string {
 const envSchema = z.object({
   APP_MODE: z.enum(["demo", "production"]).optional(),
   NEXT_PUBLIC_APP_URL: z.string().url().optional(),
-  DATABASE_URL: z.string().optional(),
   SESSION_SECRET: z.string().optional(),
   TOKEN_ENCRYPTION_KEY_REFERENCE: z.string().optional(),
   CRON_SECRET: z.string().optional(),
@@ -42,6 +44,10 @@ const envSchema = z.object({
   GOOGLE_ADS_DEVELOPER_TOKEN: z.string().optional(),
   GOOGLE_ADS_MANAGER_CUSTOMER_ID: z.string().optional(),
   GOOGLE_ADS_API_VERSION: z.string().optional(),
+  GOOGLE_AGENCY_EMAIL: z.string().optional(),
+  SHOPIFY_API_KEY: z.string().optional(),
+  SHOPIFY_API_SECRET: z.string().optional(),
+  SHOPIFY_API_VERSION: z.string().optional(),
   EMAIL_API_KEY: z.string().optional(),
   EMAIL_FROM_ADDRESS: z.string().optional(),
   NOTIFY_URL: z.string().optional(),

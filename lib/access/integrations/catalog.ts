@@ -1,13 +1,12 @@
-import { PHASE_1_PLATFORMS, PHASE_2_PLATFORMS, type Platform } from "@/lib/access/types";
+import { PLATFORMS, type Platform } from "@/lib/access/types";
 
 export interface PlatformMeta {
   key: Platform;
   label: string;
-  phase: 1 | 2;
   /** Plain-language copy for the client-facing onboarding card - no API jargon. */
   clientExplanation: string;
   officialDocsUrl: string;
-  /** Set when the exact current scope/endpoint names could not be verified against live docs - see section 23 of the spec. */
+  /** Set when the integration (or some of its endpoint/scope names) has not been verified against a live account. */
   requiresVerification?: string;
 }
 
@@ -15,7 +14,6 @@ export const PLATFORM_CATALOG: Record<Platform, PlatformMeta> = {
   meta_ads: {
     key: "meta_ads",
     label: "Meta Ads",
-    phase: 1,
     clientExplanation:
       "Lets our team see and manage the ad accounts you choose, so we can run and report on campaigns without ever seeing your password.",
     officialDocsUrl: "https://developers.facebook.com/docs/marketing-apis/",
@@ -23,7 +21,6 @@ export const PLATFORM_CATALOG: Record<Platform, PlatformMeta> = {
   instagram: {
     key: "instagram",
     label: "Instagram",
-    phase: 1,
     clientExplanation:
       "Lets our team view your Instagram professional account's performance and, only if you allow it, publish content or manage comments and messages on your behalf.",
     officialDocsUrl: "https://developers.facebook.com/docs/instagram-platform/",
@@ -33,32 +30,35 @@ export const PLATFORM_CATALOG: Record<Platform, PlatformMeta> = {
   google_ads: {
     key: "google_ads",
     label: "Google Ads",
-    phase: 1,
     clientExplanation:
       "Lets our team see your Google Ads account's performance and, once you approve the manager-account link, run and optimize campaigns.",
-    officialDocsUrl: "https://developers.google.com/google-ads/api/docs/oauth/overview",
+    officialDocsUrl: "https://developers.google.com/google-ads/api/docs/account-management/linking-manager-accounts",
+    requiresVerification: "Not yet tried on a live account. Automatic access requests need at least Basic API access on your Google Cloud project.",
   },
-  google_analytics_4: phase2("google_analytics_4", "Google Analytics 4", "https://developers.google.com/analytics"),
-  google_merchant_center: phase2("google_merchant_center", "Google Merchant Center", "https://developers.google.com/shopping-content"),
-  google_search_console: phase2("google_search_console", "Google Search Console", "https://developers.google.com/webmaster-tools"),
-  google_tag_manager: phase2("google_tag_manager", "Google Tag Manager", "https://developers.google.com/tag-platform/tag-manager"),
-  shopify: phase2("shopify", "Shopify", "https://shopify.dev/docs/api"),
-  youtube: phase2("youtube", "YouTube", "https://developers.google.com/youtube"),
-  whatsapp_business: phase2("whatsapp_business", "WhatsApp Business", "https://developers.facebook.com/docs/whatsapp"),
-  klaviyo: phase2("klaviyo", "Klaviyo", "https://developers.klaviyo.com"),
-  linkedin_ads: phase2("linkedin_ads", "LinkedIn Ads", "https://learn.microsoft.com/en-us/linkedin/marketing"),
-  pinterest_ads: phase2("pinterest_ads", "Pinterest Ads", "https://developers.pinterest.com/docs/api/v5/"),
+  google_analytics_4: {
+    key: "google_analytics_4",
+    label: "Google Analytics 4",
+    clientExplanation:
+      "Adds our team to the Analytics properties you choose, so we can see how your site and campaigns perform (and configure measurement only if your plan includes it).",
+    officialDocsUrl: "https://developers.google.com/analytics/devguides/config/admin/v1",
+    requiresVerification: "Built to Google's Admin API reference but not yet tried on a live Analytics account; user management uses the v1alpha endpoint.",
+  },
+  google_tag_manager: {
+    key: "google_tag_manager",
+    label: "Google Tag Manager",
+    clientExplanation:
+      "Adds our team to the Tag Manager containers you choose, so we can check your tracking and, only if your plan includes it, edit and publish tags.",
+    officialDocsUrl: "https://developers.google.com/tag-platform/tag-manager/api/reference/rest",
+    requiresVerification: "Built to Google's Tag Manager API v2 reference but not yet tried on a live account.",
+  },
+  shopify: {
+    key: "shopify",
+    label: "Shopify",
+    clientExplanation:
+      "Installs our agency app on your store with only the permissions your plan needs, so we can report on sales and support your marketing. You can uninstall it at any time.",
+    officialDocsUrl: "https://shopify.dev/docs/apps/build/authentication-authorization",
+    requiresVerification: "Built to shopify.dev (expiring offline tokens) but not yet tried on a live store. Orders data may also need Shopify's protected customer data approval.",
+  },
 };
 
-function phase2(key: Platform, label: string, officialDocsUrl: string): PlatformMeta {
-  return {
-    key,
-    label,
-    phase: 2,
-    clientExplanation: `${label} support is planned for a future release.`,
-    officialDocsUrl,
-  };
-}
-
-export const PHASE_1_PLATFORM_LIST = PHASE_1_PLATFORMS.map((key) => PLATFORM_CATALOG[key]);
-export const PHASE_2_PLATFORM_LIST = PHASE_2_PLATFORMS.map((key) => PLATFORM_CATALOG[key]);
+export const PLATFORM_LIST = PLATFORMS.map((key) => PLATFORM_CATALOG[key]);

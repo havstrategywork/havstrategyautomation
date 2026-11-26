@@ -1,18 +1,19 @@
 /** Thin fetch wrappers for Google OAuth token endpoints and the Google Ads API (REST). */
 
 export function adsApiVersion(): string {
-  return process.env.GOOGLE_ADS_API_VERSION?.trim() || "v18";
+  return process.env.GOOGLE_ADS_API_VERSION?.trim() || "v26"; // Google retires versions yearly (v26 sunsets November 2027)
 }
 
 export function requireGoogleAdsConfig():
-  | { ok: true; clientId: string; clientSecret: string; developerToken: string; managerCustomerId: string }
+  | { ok: true; clientId: string; clientSecret: string; developerToken: string | null; managerCustomerId: string }
   | { ok: false; error: string } {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  // Developer tokens were retired in September 2026 (access is granted per Google Cloud project now): sent only if still set.
+  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim() || null;
   const managerCustomerId = process.env.GOOGLE_ADS_MANAGER_CUSTOMER_ID;
-  if (!clientId || !clientSecret || !developerToken || !managerCustomerId) {
-    return { ok: false, error: "Google Ads integration is not fully configured (GOOGLE_CLIENT_ID/SECRET, GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_MANAGER_CUSTOMER_ID)." };
+  if (!clientId || !clientSecret || !managerCustomerId) {
+    return { ok: false, error: "Google Ads integration is not fully configured (GOOGLE_CLIENT_ID/SECRET, GOOGLE_ADS_MANAGER_CUSTOMER_ID)." };
   }
   return { ok: true, clientId, clientSecret, developerToken, managerCustomerId: managerCustomerId.replace(/-/g, "") };
 }
@@ -71,7 +72,7 @@ export async function refreshGoogleToken(refreshToken: string): Promise<{ ok: tr
   return { ok: true, data };
 }
 
-/** Calls the Google Ads API REST surface. `loginCustomerId` should be the agency MCC id unless operating as the customer itself. */
+/** Calls the Google Ads API REST surface. Pass `loginCustomerId` only when the token belongs to a manager account's user; a client's own user must not send it. */
 export async function googleAdsRequest<T>(
   path: string,
   accessToken: string,
@@ -85,8 +86,8 @@ export async function googleAdsRequest<T>(
       method: init?.method ?? "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "developer-token": config.developerToken,
-        "login-customer-id": init?.loginCustomerId ?? config.managerCustomerId,
+        ...(config.developerToken && { "developer-token": config.developerToken }),
+        ...(init?.loginCustomerId && { "login-customer-id": init.loginCustomerId }),
         "Content-Type": "application/json",
       },
       body: init?.body ? JSON.stringify(init.body) : undefined,

@@ -2,6 +2,7 @@ import { MongoClient, ObjectId } from "mongodb";
 import type { Role } from "./roles";
 import type { MailStatus } from "./mail";
 import type { BotEdge, BotNode, Vars } from "./botflow";
+import type { Asked, Step } from "./onboarding";
 
 export type Creator = {
   _id?: ObjectId;
@@ -141,10 +142,13 @@ export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: 
 export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
 export type Onboarding = {
   _id?: ObjectId; at: Date; services: string[]; answers: Record<string, string>; ipHash?: string;
-  sheet?: { ok: boolean; at: Date; error?: string };
+  questions?: Asked[]; formVersion?: number; // the questions as worded when it was submitted (missing on early submissions)
+  sheet?: { ok: boolean; at: Date; error?: string }; // legacy: from when answers were also copied to a Google Sheet
   notion?: { ok: boolean; at: Date; error?: string; url?: string }; // the condensed brief page (lib/notionBrief.ts)
 }; // a public onboarding-form submission (lib/onboarding.ts)
-// dashboard settings, one doc per area: _id "onboardingSheet" (where onboarding answers are pushed) or "onboardingNotion" (where the brief page is created)
+// the live onboarding form, edited on the "Form editor" page (one document, _id "form"); absent = the built-in DEFAULT_STEPS
+export type OnboardingFormDoc = { _id: string; version: number; steps: Step[]; updatedAt: Date; by: string };
+// dashboard settings, one doc per area: _id "onboardingNotion" is where the brief page is created (an old "onboardingSheet" doc may remain; unused)
 export type Setting = { _id: string; sheetUrl?: string; sheetId?: string; sheetName?: string; tab?: string; pageId?: string; pageUrl?: string; pageTitle?: string; updatedAt: Date; by?: string };
 export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
 
@@ -199,6 +203,7 @@ export async function db() {
     botSessions: d.collection<BotSession>("botSessions"),
     botSeen: d.collection<BotSeen>("botSeen"),
     onboarding: d.collection<Onboarding>("onboarding"),
+    onboardingForm: d.collection<OnboardingFormDoc>("onboardingForm"),
     settings: d.collection<Setting>("settings"),
   };
 }
@@ -215,3 +220,8 @@ export async function sentToday(channel: "ig" | "email") {
 // Enforced server-side in /api/outreach/next, and /api/outreach/:id/sent, so a prompt can't bypass it.
 const allowList = (v?: string) => (v ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
 export const igAllowed = (handle?: string) => { const l = allowList(process.env.IG_ALLOWLIST); return !l.length || (!!handle && l.includes(handle.toLowerCase())); };
+
+/** The raw database handle, for modules that keep their own collections (the Access Hub hub_* collections in lib/access/db). */
+export async function mongoDb() {
+  return (await connect()).db();
+}
