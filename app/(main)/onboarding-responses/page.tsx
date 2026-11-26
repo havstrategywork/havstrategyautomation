@@ -6,6 +6,7 @@ import { getForm } from "@/lib/onboardingForm";
 import Link from "next/link";
 import { pushUnsentNotion as pushAllNotion, briefTarget } from "@/lib/notionBrief";
 import { currentUser } from "@/lib/session";
+import { isFormAdmin } from "@/lib/roles";
 import AutoRefresh from "@/components/AutoRefresh";
 import { Avatar, Icon, PageHead, ago } from "@/components/ui";
 
@@ -33,6 +34,7 @@ export default async function Responses() {
   const { onboarding } = await db();
   const [rows, total, form] = await Promise.all([onboarding.find().sort({ at: -1 }).limit(200).toArray(), onboarding.countDocuments(), getForm()]);
   const today = rows.filter((r) => +r.at > Date.now() - 864e5).length;
+  const me = await currentUser(), canEdit = !!me && isFormAdmin(me);
   const notionUnsent = rows.filter((r) => !r.notion?.ok).length, notionTarget = await briefTarget(), notionOn = !!notionTarget;
 
   return (
@@ -40,7 +42,7 @@ export default async function Responses() {
       <AutoRefresh />
       <PageHead title="Onboarding" sub="Answers from the public onboarding form, newest first. This page refreshes by itself.">
         <a className="btn ghost" href="/onboarding" target="_blank" rel="noopener noreferrer">Open the form</a>
-        <Link className="btn ghost" href="/onboarding-form"><Icon name="settings" size={16} /> Edit questions</Link>
+        {canEdit && <Link className="btn ghost" href="/onboarding-form"><Icon name="settings" size={16} /> Edit questions</Link>}
         <a className="btn" href="/onboarding-responses/export"><Icon name="arrow" size={16} /> Download .xlsx</a>
       </PageHead>
 

@@ -686,3 +686,8 @@ a.stat .value, a.stat .sub { color: inherit; }
 .fe .fe-check { display: flex; align-items: center; gap: .5rem; }
 button.ghost.fe-danger { color: var(--bad); }
 .fe-bar { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; padding: .75rem 0; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--border); }
+
+/* signing in again (to switch accounts) shows the sign-in screen without the dashboard around it */
+.shell:has(.auth) > :not(.main) { display: none; }
+.shell:has(.auth) { display: block; }
+.main:has(.auth) { padding: 0; max-width: none; }

@@ -16,7 +16,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
-      <Sidebar role={session.role} organizationName={session.organizationName} />
+      <Sidebar role={session.role} email={session.email} organizationName={session.organizationName} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <TopBar name={session.name} email={session.email} role={session.role} demoMode={getAppMode() === "demo"} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>

@@ -2,11 +2,12 @@
 import { revalidatePath } from "next/cache";
 import { saveForm } from "@/lib/onboardingForm";
 import { currentUser } from "@/lib/session";
+import { FORM_ADMIN, isFormAdmin } from "@/lib/roles";
 
-// The proxy already blocks this page for non-admins, but a server action must never trust that alone.
+// The proxy already limits this page to the form admin, but a server action must never trust that alone.
 export async function saveOnboardingForm(stepsJson: string, baseVersion: number) {
   const me = await currentUser();
-  if (me?.role !== "admin") return { ok: false as const, error: "Sign in as an admin to change the form." };
+  if (!me || !isFormAdmin(me)) return { ok: false as const, error: `Sign in as ${FORM_ADMIN} to change the form.` };
   if (stepsJson.length > 400_000) return { ok: false as const, error: "The form is too large to save." };
   let steps: unknown;
   try { steps = JSON.parse(stepsJson); } catch { return { ok: false as const, error: "Could not read the form. Reload the page and try again." }; }

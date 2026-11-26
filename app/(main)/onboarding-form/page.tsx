@@ -3,12 +3,14 @@ import OnboardingEditor from "@/components/OnboardingEditor";
 import { PageHead, ago } from "@/components/ui";
 import { getForm } from "@/lib/onboardingForm";
 import { currentUser } from "@/lib/session";
+import { FORM_EDITOR, isFormAdmin } from "@/lib/roles";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function OnboardingFormPage() {
-  if ((await currentUser())?.role !== "admin") redirect("/login");
+  const me = await currentUser();
+  if (!me || !isFormAdmin(me)) redirect(`/login?next=${FORM_EDITOR}`);
   const { steps, version, updatedAt, by } = await getForm();
   return (
     <>
