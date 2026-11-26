@@ -254,6 +254,36 @@ export function sheetRows(subs: readonly Submission[], steps: readonly Step[]): 
   ];
 }
 
+// ---------------------------------------------------------------- the Google Sheet
+
+/** The spreadsheet id inside a pasted Google Sheets link (or a bare id). Anything else (a Form, a Doc, an .xlsx link) gives null. */
+export function sheetIdFromUrl(input: string): string | null {
+  const v = input.trim();
+  const m = v.match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([\w-]{20,})/i);
+  return m ? m[1] : /^[\w-]{30,}$/.test(v) ? v : null;
+}
+
+const columnTitle = (label: string) => label.slice(0, 150);
+/** One submission as [column title, value] pairs, with the questions worded as they were when it was sent. */
+export function sheetPairs(sub: Submission, steps: readonly Step[]): [string, string][] {
+  const [, row] = sheetRows([sub], steps);
+  return [["Submitted", row[0]], ["Services", row[1]], ...questionsOf(sub, steps).map((q): [string, string] => [columnTitle(q.label), sub.answers[q.id] ?? ""])];
+}
+/** The header written to an empty sheet: every current question. */
+export const sheetHeader = (steps: readonly Step[]) => ["Submitted", "Services", ...allFields(steps).map((x) => columnTitle(x.label))];
+
+/** Places each value under the column with its title. Existing columns are never moved; a question with no column yet gets a new one at the end. */
+export function alignRow(header: readonly string[], pairs: readonly [string, string][]): { header: string[]; row: string[] } {
+  const out = [...header], row: string[] = header.map(() => ""), used = new Set<number>();
+  for (const [title, value] of pairs) {
+    let i = out.findIndex((h, j) => !used.has(j) && h.trim() === title.trim()); // two questions with the same wording take the columns in order
+    if (i < 0) i = out.push(title) - 1;
+    used.add(i);
+    row[i] = value;
+  }
+  return { header: out, row: Array.from({ length: out.length }, (_, i) => row[i] ?? "") };
+}
+
 // ---------------------------------------------------------------- editing the form
 
 export const FIELD_TYPES: { value: FieldType; label: string }[] = [

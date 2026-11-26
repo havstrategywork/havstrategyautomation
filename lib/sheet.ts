@@ -4,6 +4,7 @@
 // with the service account as Editor: bare service accounts have ~0 Drive storage quota of their own, and files.copy inherits the source
 // file's parent by default, so this just works as long as the template wasn't created by the service account itself.
 import { createSign } from "node:crypto";
+import { alignRow } from "./onboarding";
 
 const b64 = (o: unknown) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64url");
 
@@ -137,20 +138,27 @@ export async function checkSheet(id: string) {
   return f.name ?? "Untitled";
 }
 
-/** Adds one row at the bottom of `tab` in the agency's own Google Sheet (shared with our service account as Editor). The tab and its header row are created on first use.
- *  RAW input, so an answer that starts with "=" stays plain text instead of becoming a formula. */
-export async function appendRow(spreadsheetId: string, tab: string, header: string[], row: (string | number)[]) {
+/** Adds one row at the bottom of `tab` in the agency's own Google Sheet (shared with our service account as Editor), matching values to columns by title
+ *  (lib/onboarding.ts alignRow). The tab, its header row and any new column are created as needed. RAW input, so an answer starting with "=" stays text.
+ *  ponytail: two submissions landing in the same second right after a question was added could both claim the new column; add a lock if that ever bites. */
+export async function appendByTitle(spreadsheetId: string, tab: string, fullHeader: string[], pairs: [string, string][]) {
   const { bearer, email } = await token();
-  const base = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, range = encodeURIComponent(`'${tab}'!A1`);
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, quoted = `'${tab.replace(/'/g, "''")}'`;
+  const at = (a1: string) => encodeURIComponent(`${quoted}!${a1}`);
   try {
-    let first: unknown[] | undefined;
-    try { first = (await call(bearer, `${base}/values/${encodeURIComponent(`'${tab}'!1:1`)}`, "GET")).values?.[0]; }
-    catch (e) { // a missing tab is a 400 "Unable to parse range": make it, then write the header
-      if (!/Google API 400/.test((e as Error).message)) throw e;
-      await call(bearer, `${base}:batchUpdate`, "POST", { requests: [{ addSheet: { properties: { title: tab, gridProperties: { frozenRowCount: 1 } } } }] });
+    const meta = await call(bearer, `${base}?fields=sheets.properties(sheetId,title,gridProperties.columnCount)`, "GET");
+    type Props = { sheetId: number; title: string; gridProperties?: { columnCount?: number } };
+    let props: Props | undefined = (meta.sheets ?? []).map((x: { properties: Props }) => x.properties).find((x: Props) => x.title === tab);
+    if (!props) {
+      const made = await call(bearer, `${base}:batchUpdate`, "POST", { requests: [{ addSheet: { properties: { title: tab, gridProperties: { frozenRowCount: 1 } } } }] });
+      props = made.replies[0].addSheet.properties as Props;
     }
-    if (!first?.length) await call(bearer, `${base}/values/${range}?valueInputOption=RAW`, "PUT", { values: [header] });
-    await call(bearer, `${base}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, "POST", { values: [row] });
+    const existing: string[] = ((await call(bearer, `${base}/values/${at("1:1")}`, "GET")).values?.[0] ?? []).map(String);
+    const { header, row } = alignRow(existing.length ? existing : fullHeader, pairs);
+    const columns = props.gridProperties?.columnCount ?? 26;
+    if (header.length > columns) await call(bearer, `${base}:batchUpdate`, "POST", { requests: [{ appendDimension: { sheetId: props.sheetId, dimension: "COLUMNS", length: header.length - columns } }] });
+    if (header.length !== existing.length) await call(bearer, `${base}/values/${at("A1")}?valueInputOption=RAW`, "PUT", { values: [header] });
+    await call(bearer, `${base}/values/${at("A1")}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, "POST", { values: [row] });
   } catch (e) {
     if (/Google API (403|404)/.test((e as Error).message)) throw new Error(`can't open the Google Sheet: share it with ${email} as Editor`);
     throw e;

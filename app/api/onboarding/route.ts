@@ -4,10 +4,11 @@ import { db } from "@/lib/db";
 import { notify } from "@/lib/notify";
 import { asked, validate } from "@/lib/onboarding";
 import { getForm } from "@/lib/onboardingForm";
+import { pushToSheet } from "@/lib/onboardingSheet";
 import { pushToNotion } from "@/lib/notionBrief";
 
 // PUBLIC endpoint (the onboarding page posts here; no login, no Bearer key). So it is defensive: size cap, honeypot, per-IP limit, strict validation.
-// Answers are stored in MongoDB; the Notion brief and the notification run after the response.
+// Answers are stored in MongoDB first; the Google Sheet copy, the Notion brief and the notification run after the response.
 const MAX_BYTES = 200_000, PER_HOUR = 5;
 
 export async function POST(req: Request) {
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
   const at = new Date();
   const { insertedId } = await onboarding.insertOne({ at, services: v.services, answers: v.answers, questions: asked(form.steps, v.services), formVersion: form.version, ipHash });
   after(async () => {
+    await pushToSheet(insertedId);
     await pushToNotion(insertedId);
     await notify(`New onboarding: ${v.answers.company}`, `${v.answers.name} (${v.answers.email}) · ${v.services.join(", ")}`);
   });

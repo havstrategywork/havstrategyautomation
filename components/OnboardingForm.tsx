@@ -125,8 +125,7 @@ export default function OnboardingForm({ form, version }: { form: Step[]; versio
     <div className="ob">
       <div className="ob-shell">
         <aside className="ob-rail">
-          {/* A full page load on purpose: the editor is the dashboard, with its own styles and sign-in. */}
-          <div className="ob-brand"><img src="/havstrategy-logo.png" alt="" /><span>Havstrategy</span><a className="ob-admin" href="/onboarding-form">Admin</a></div>
+          <div className="ob-brand"><img src="/havstrategy-logo.png" alt="" /><span>Havstrategy</span></div>
           <h1>Let&apos;s build something <em>remarkable</em> together</h1>
           <p>A few questions so we can hit the ground running. It takes about ten minutes, and your answers save as you go.</p>
           <ol className="ob-steps" aria-label="Progress">

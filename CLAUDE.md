@@ -235,7 +235,9 @@ dashboard `users` (`lib/access/db/queries/users.ts`); the Hub's Team page adds/e
   The OAuth redirect URI to register with Meta/Google is `<APP_URL>/api/access/oauth/<platform>/callback`. Other env vars: `.env.example`.
 
 ## Client onboarding form (public `/onboarding`)
-Answers are stored in MongoDB (`onboarding` collection) - no Google Sheet. Questions are edited on **Form editor** (`/onboarding-form`, also reached from the "Admin" tab beside the title on the public form), by ONE login only: `havstrategy`, the team's single dashboard login (`FORM_ADMIN` in `lib/roles.ts`). That account is protected: the Users and Hub Team pages can't delete it or change its role, and only it can change its own password (`set-user.mjs` still can): sections, questions, order,
+Answers are stored in MongoDB (`onboarding` collection) and then copied to the Google Sheet saved on Settings (`lib/onboardingSheet.ts`; needs `GOOGLE_SA_JSON`, sheet shared with the service account as Editor).
+Values are matched to sheet columns by question text: existing columns never move, new or reworded questions get a new column at the end. Failed copies are retried with "Push to the sheet now" on `/onboarding-responses`.
+Questions are edited on **Form editor** (`/onboarding-form`, in the dashboard sidebar; the public form has no link to it), by ONE login only: `havstrategy`, the team's single dashboard login (`FORM_ADMIN` in `lib/roles.ts`). That account is protected: the Users and Hub Team pages can't delete it or change its role, and only it can change its own password (`set-user.mjs` still can): sections, questions, order,
 which services show them; saved to the `onboardingForm` collection (`lib/onboardingForm.ts`), with `DEFAULT_STEPS` (`lib/onboarding.ts`) used until the first save. `name`, `email`, `company` are locked
 (dashboard, notifications and the Notion brief rely on them). Each submission keeps a snapshot of the questions as asked, so removed or reworded questions stay readable on `/onboarding-responses` and in
 the .xlsx export. The five services themselves are fixed in code. The Notion brief (Settings) is unchanged and only picks up the original question ids.

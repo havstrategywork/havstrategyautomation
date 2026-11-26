@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { allFields, asked, DEFAULT_STEPS as STEPS, questionsOf, sheetRows, stepErrors, validate as check, validateForm, visibleSteps, type Step } from "./onboarding.ts";
+import { alignRow, allFields, asked, sheetHeader, sheetIdFromUrl, sheetPairs, DEFAULT_STEPS as STEPS, questionsOf, sheetRows, stepErrors, validate as check, validateForm, visibleSteps, type Step } from "./onboarding.ts";
 const validate = (body: unknown) => check(body, STEPS);
 
 const base = { name: "Asha", email: "asha@brand.com", company: "Brand Co" };
@@ -70,6 +70,20 @@ rejected((f) => { f[2].fields[0].id = "constructor"; }, /invalid id/);
 rejected((f) => { f[2].fields[0].type = "html" as never; }, /unknown answer type/);
 rejected((f) => f.slice(1), /service picker/);
 rejected(() => [], /empty/);
+// the Google Sheet: values follow their column title, wherever it is
+const pairs = sheetPairs(snap, STEPS), full = sheetHeader(STEPS);
+const first = alignRow(full, pairs);
+assert.deepEqual(first.header, full); // nothing new to add to a sheet with the original columns
+assert.equal(first.row[full.indexOf("Which keywords, topics or pages do you most want to rank for?")], "pizza");
+const moved = alignRow(["Email", "Notes by us", "Submitted"], pairs);
+assert.deepEqual(moved.header.slice(0, 3), ["Email", "Notes by us", "Submitted"]); // existing columns stay put
+assert.deepEqual(moved.row.slice(0, 3), ["asha@brand.com", "", "2026-11-24 10:30"]);
+assert.equal(moved.row.length, moved.header.length);
+assert.equal(moved.row[moved.header.indexOf("Company or brand name")], "Brand Co");
+assert.deepEqual(alignRow(["Q", "Q"], [["Q", "1"], ["Q", "2"]]).row, ["1", "2"]);
+const sheet = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
+assert.equal(sheetIdFromUrl(`https://docs.google.com/spreadsheets/d/${sheet}/edit?gid=1#gid=1`), sheet);
+assert.equal(sheetIdFromUrl(`https://evil.com/spreadsheets/d/${sheet}`), null);
 console.log("onboarding ok");
 const site = validate({ services: ["seo"], answers: { ...base, website: "mysite.com" } });
 assert.ok(site.ok && site.answers.website === "https://mysite.com"); // no https:// needed
