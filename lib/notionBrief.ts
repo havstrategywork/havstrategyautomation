@@ -1,7 +1,7 @@
 // Posts a condensed "brief" page to Notion for each onboarding submission: just the handful of answers a strategist needs
-// before kickoff, not the full 50+ question dump (that lives in the Google Sheet and the Onboarding admin page). Where it
+// before kickoff, not the full 50+ question dump (that lives on the Onboarding admin page). Where it
 // goes is set on the dashboard's Settings page (saved in the `settings` collection, _id "onboardingNotion"). NOTION_PARENT_PAGE_ID
-// is a fallback, same pattern as lib/onboardingSheet.ts's ONBOARDING_SHEET_ID.
+// is a fallback.
 import type { ObjectId } from "mongodb";
 // Explicit .ts extensions here (unlike the rest of this codebase) so this file's pure logic (briefBlocks/briefTitle) can be
 // run and tested directly with plain `node`, which — unlike Next's bundler — won't resolve a bare specifier like "./db".
@@ -31,7 +31,7 @@ function row(a: Record<string, string>, label: string, id: string, kind: "bullet
 }
 
 /** The condensed brief's blocks: contact, chosen services, a short business/brand/customer snapshot, one goal line per
- *  service, and budget if given. Deliberately NOT every question — the Google Sheet and the Onboarding admin page have those. */
+ *  service, and budget if given. Deliberately NOT every question — the Onboarding admin page has those. */
 export function briefBlocks(services: ServiceId[], a: Record<string, string>): Block[] {
   const blocks: Block[] = [
     h2("Contact"),
@@ -48,13 +48,13 @@ export function briefBlocks(services: ServiceId[], a: Record<string, string>): B
   if (goals.length) blocks.push(h2("What they want from each service"), ...goals);
   const budget = g(a, "budget") || g(a, "crBudget");
   if (budget) blocks.push(h2("Budget"), para(budget));
-  blocks.push(divider(), callout("Every answer, including files, is in the Onboarding page of the dashboard and the Google Sheet."));
+  blocks.push(divider(), callout("Every answer, including files, is on the Onboarding page of the dashboard."));
   return blocks;
 }
 
 export const briefTitle = (a: Record<string, string>, at: Date) => `${a.company || a.name || "New client"} — ${at.toISOString().slice(0, 10)}`;
 
-/** Never throws: same pattern as pushToSheet — a Notion outage must not lose or fail a submission (it's already saved;
+/** Never throws: a Notion outage must not lose or fail a submission (it's already saved;
  *  Settings / the retry button on Onboarding can push it again). */
 export async function pushToNotion(id: ObjectId) {
   const target = await briefTarget();

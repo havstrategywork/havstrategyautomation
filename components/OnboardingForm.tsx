@@ -1,10 +1,10 @@
 "use client";
-// The public client onboarding form (lib/onboarding.ts holds every question). Light only; see onboarding.css.
+// The public client onboarding form; the questions come from the server (lib/onboardingForm.ts, edited by admins). Light only; see onboarding.css.
 // Flow: pick services (at least one) -> your details -> shared steps -> one block per chosen service -> working together -> submit.
 // Answers autosave in the browser, so a refresh or a closed tab never loses a long form.
 import { useEffect, useRef, useState } from "react";
 import "./onboarding.css";
-import { SERVICES, stepErrors, visibleSteps, type Field, type ServiceId } from "@/lib/onboarding";
+import { SERVICES, stepErrors, visibleSteps, type Field, type ServiceId, type Step } from "@/lib/onboarding";
 import { useUploadThing } from "@/lib/uploadthing";
 
 type Answers = Record<string, string>;
@@ -74,13 +74,13 @@ function FieldView({ field, value, error, onChange, i }: { field: Field; value: 
   );
 }
 
-export default function OnboardingForm() {
+export default function OnboardingForm({ form, version }: { form: Step[]; version: number }) {
   const [services, setServices] = useState<ServiceId[]>([]), [answers, setAnswers] = useState<Answers>({}), [stepId, setStepId] = useState("services");
   const [dir, setDir] = useState<"next" | "prev">("next"), [errors, setErrors] = useState<Answers>({}), [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false), [fail, setFail] = useState(""), [done, setDone] = useState<string | null>(null), [ready, setReady] = useState(false);
   const head = useRef<HTMLHeadingElement>(null), hp = useRef<HTMLInputElement>(null);
 
-  const steps = visibleSteps(services), idx = Math.max(0, steps.findIndex((s) => s.id === stepId)), step = steps[idx], last = idx === steps.length - 1;
+  const steps = visibleSteps(form, services), idx = Math.max(0, steps.findIndex((s) => s.id === stepId)), step = steps[idx], last = idx === steps.length - 1;
 
   // restore a saved draft once, then keep saving (storage can be blocked: the form works without it)
   useEffect(() => {
@@ -103,7 +103,7 @@ export default function OnboardingForm() {
     if (!last) return go(steps[idx + 1].id, "next");
     setSending(true); setFail("");
     try {
-      const r = await fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ services, answers, hp: hp.current?.value ?? "" }) });
+      const r = await fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ services, answers, version, hp: hp.current?.value ?? "" }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) setFail(j.error ?? "Something went wrong. Please try again.");
       else { setDone(answers.name?.split(" ")[0] || "there"); try { localStorage.removeItem(KEY); } catch {} window.scrollTo({ top: 0 }); }
