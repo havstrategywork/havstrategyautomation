@@ -16,7 +16,7 @@ assert.equal(homeFor("social"), "/social/reports");
 assert.ok(hasApiKey("admin") && hasApiKey("outreach") && !hasApiKey("mail") && !hasApiKey("social"));
 // only one login may edit the onboarding form
 assert.ok(isFormAdmin({ username: FORM_ADMIN, role: "admin" }) && isFormAdmin({ username: "x", email: FORM_ADMIN, role: "admin" }));
-assert.ok(!isFormAdmin({ username: "havstrategy", email: null, role: "admin" }) && !isFormAdmin({ username: FORM_ADMIN, role: "outreach" }));
+assert.ok(!isFormAdmin({ username: "havstrategy.work@gmail.com", email: null, role: "admin" }) && !isFormAdmin({ username: FORM_ADMIN, role: "outreach" }));
 // sign-in can only send people to the one allowed page
 assert.equal(safeNext("/onboarding-form"), "/onboarding-form");
 for (const bad of ["//evil.com", "https://evil.com", "/users", "/onboarding-form/../users", undefined, null]) assert.equal(safeNext(bad), null);
