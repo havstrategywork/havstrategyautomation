@@ -1,4 +1,4 @@
-import type { Phase1Platform, PermissionPreset } from "@/lib/access/types";
+import type { Platform, PermissionPreset } from "@/lib/access/types";
 
 /**
  * Canonical, officially-supported scope names per platform (section 6).
@@ -31,7 +31,33 @@ export const PLATFORM_SCOPES = {
   // application-level restriction we enforce ourselves, not a distinct
   // OAuth scope (section 6C).
   google_ads: ["https://www.googleapis.com/auth/adwords"],
+  // manage.users is needed to add the agency's own account as a user on the property / container.
+  google_analytics_4: [
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "https://www.googleapis.com/auth/analytics.edit",
+    "https://www.googleapis.com/auth/analytics.manage.users",
+  ],
+  google_tag_manager: [
+    "https://www.googleapis.com/auth/tagmanager.readonly",
+    "https://www.googleapis.com/auth/tagmanager.edit.containers",
+    "https://www.googleapis.com/auth/tagmanager.publish",
+    "https://www.googleapis.com/auth/tagmanager.manage.users",
+  ],
+  shopify: [
+    "read_analytics",
+    "read_orders",
+    "read_products",
+    "write_products",
+    "read_content",
+    "write_content",
+    "write_discounts",
+    "read_marketing_events",
+    "write_marketing_events",
+  ],
 } as const;
+
+const [GA_READ, GA_EDIT, GA_USERS] = PLATFORM_SCOPES.google_analytics_4;
+const [GTM_READ, GTM_EDIT, GTM_PUBLISH, GTM_USERS] = PLATFORM_SCOPES.google_tag_manager;
 
 export type GoogleAdsAccessLevel = "read_only" | "manage_campaigns";
 
@@ -40,6 +66,9 @@ export interface PresetPlatformGrant {
   instagramScopes: readonly string[];
   googleAdsScopes: readonly string[];
   googleAdsAccessLevel: GoogleAdsAccessLevel | null;
+  analyticsScopes: readonly string[];
+  tagManagerScopes: readonly string[];
+  shopifyScopes: readonly string[];
 }
 
 export interface PresetDefinition {
@@ -54,6 +83,9 @@ const NONE: PresetPlatformGrant = {
   instagramScopes: [],
   googleAdsScopes: [],
   googleAdsAccessLevel: null,
+  analyticsScopes: [],
+  tagManagerScopes: [],
+  shopifyScopes: [],
 };
 
 export const PERMISSION_PRESET_DEFINITIONS: Record<Exclude<PermissionPreset, "custom">, PresetDefinition> = {
@@ -66,6 +98,9 @@ export const PERMISSION_PRESET_DEFINITIONS: Record<Exclude<PermissionPreset, "cu
       instagramScopes: ["instagram_basic", "instagram_manage_insights"],
       googleAdsScopes: [...PLATFORM_SCOPES.google_ads],
       googleAdsAccessLevel: "read_only",
+      analyticsScopes: [GA_READ, GA_USERS],
+      tagManagerScopes: [GTM_READ, GTM_USERS],
+      shopifyScopes: ["read_analytics", "read_orders", "read_products"],
     },
   },
   performance_marketing: {
@@ -77,6 +112,9 @@ export const PERMISSION_PRESET_DEFINITIONS: Record<Exclude<PermissionPreset, "cu
       instagramScopes: ["instagram_basic", "instagram_manage_insights"],
       googleAdsScopes: [...PLATFORM_SCOPES.google_ads],
       googleAdsAccessLevel: "manage_campaigns",
+      analyticsScopes: [GA_READ, GA_EDIT, GA_USERS],
+      tagManagerScopes: [GTM_READ, GTM_EDIT, GTM_PUBLISH, GTM_USERS],
+      shopifyScopes: ["read_analytics", "read_orders", "read_products", "write_discounts", "read_marketing_events", "write_marketing_events"],
     },
   },
   social_media_management: {
@@ -93,6 +131,9 @@ export const PERMISSION_PRESET_DEFINITIONS: Record<Exclude<PermissionPreset, "cu
       ],
       googleAdsScopes: [],
       googleAdsAccessLevel: null,
+      analyticsScopes: [GA_READ, GA_USERS],
+      tagManagerScopes: [GTM_READ, GTM_USERS],
+      shopifyScopes: ["read_products", "read_content"],
     },
   },
   full_marketing_management: {
@@ -110,6 +151,9 @@ export const PERMISSION_PRESET_DEFINITIONS: Record<Exclude<PermissionPreset, "cu
       ],
       googleAdsScopes: [...PLATFORM_SCOPES.google_ads],
       googleAdsAccessLevel: "manage_campaigns",
+      analyticsScopes: [...PLATFORM_SCOPES.google_analytics_4],
+      tagManagerScopes: [...PLATFORM_SCOPES.google_tag_manager],
+      shopifyScopes: [...PLATFORM_SCOPES.shopify],
     },
   },
 };
@@ -121,14 +165,23 @@ export function resolvePresetGrants(preset: PermissionPreset, custom?: Record<st
       instagramScopes: custom?.instagram ?? [],
       googleAdsScopes: custom?.google_ads ?? [],
       googleAdsAccessLevel: custom?.google_ads?.length ? "manage_campaigns" : null,
+      analyticsScopes: custom?.google_analytics_4 ?? [],
+      tagManagerScopes: custom?.google_tag_manager ?? [],
+      shopifyScopes: custom?.shopify ?? [],
     };
   }
   return PERMISSION_PRESET_DEFINITIONS[preset]?.grants ?? NONE;
 }
 
-export function scopesForPlatform(preset: PermissionPreset, platform: Phase1Platform, custom?: Record<string, string[]> | null): string[] {
-  const grants = resolvePresetGrants(preset, custom);
-  if (platform === "meta_ads") return [...grants.metaAdsScopes];
-  if (platform === "instagram") return [...grants.instagramScopes];
-  return [...grants.googleAdsScopes];
+const GRANT_KEY = {
+  meta_ads: "metaAdsScopes",
+  instagram: "instagramScopes",
+  google_ads: "googleAdsScopes",
+  google_analytics_4: "analyticsScopes",
+  google_tag_manager: "tagManagerScopes",
+  shopify: "shopifyScopes",
+} as const satisfies Record<Platform, keyof PresetPlatformGrant>;
+
+export function scopesForPlatform(preset: PermissionPreset, platform: Platform, custom?: Record<string, string[]> | null): string[] {
+  return [...resolvePresetGrants(preset, custom)[GRANT_KEY[platform]]];
 }

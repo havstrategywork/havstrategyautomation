@@ -10,7 +10,7 @@ import { apiFetch } from "@/lib/access/api-client";
 import { formatDateTime, titleCase } from "@/lib/access/utils";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
 import type { AuditLog } from "@/lib/access/db/schema-types";
-import type { Phase1Platform } from "@/lib/access/types";
+import type { Platform } from "@/lib/access/types";
 
 export default function ActivityLogsPage() {
   const [logs, setLogs] = useState<AuditLog[] | null>(null);
@@ -44,7 +44,7 @@ export default function ActivityLogsPage() {
             {logs.map((log) => (
               <TableRow key={log.id}>
                 <TableCell className="font-medium text-foreground">{titleCase(log.action)}</TableCell>
-                <TableCell className="text-muted">{log.platform ? PLATFORM_CATALOG[log.platform as Phase1Platform]?.label ?? log.platform : "-"}</TableCell>
+                <TableCell className="text-muted">{log.platform ? PLATFORM_CATALOG[log.platform as Platform]?.label ?? log.platform : "-"}</TableCell>
                 <TableCell>
                   <Badge variant="default">{titleCase(log.actorType)}</Badge>
                 </TableCell>

@@ -1,14 +1,14 @@
 import type { AnyDb } from "@/lib/access/db";
-import { listActiveConnections, getCredentials, updateConnectionStatus, upsertCredentials, listAssetsForConnection } from "@/lib/access/db/queries/connections";
+import { listActiveConnections, updateConnectionStatus, listAssetsForConnection } from "@/lib/access/db/queries/connections";
+import { getFreshAccessToken } from "./fresh-token";
 import { getClientByIdTrusted } from "@/lib/access/db/queries/clients";
 import { getAdapter } from "./registry";
-import { decryptSecret, encryptSecret } from "@/lib/access/crypto/tokens";
 import { reverifyConnectionAssets } from "./oauth-flow";
 import { notify } from "@/lib/access/notifications";
 import { listOrganizationMembers } from "@/lib/access/db/queries/users";
 import { logAudit } from "@/lib/access/audit";
 import { PLATFORM_CATALOG } from "./catalog";
-import type { Phase1Platform } from "@/lib/access/types";
+import type { Platform } from "@/lib/access/types";
 import type { PlatformConnection } from "@/lib/access/db/schema-types";
 
 /**
@@ -27,30 +27,21 @@ export async function runVerificationSweep(db: AnyDb): Promise<{ checked: number
   let reverified = 0;
 
   for (const connection of connections) {
-    const creds = await getCredentials(db, connection.id);
-    if (!creds?.encryptedAccessToken) continue;
+    const token = await getFreshAccessToken(db, connection);
+    if (!token.ok) continue;
+    if (token.refreshed) refreshed += 1;
 
-    const tokenResult = decryptSecret(creds.encryptedAccessToken);
-    if (!tokenResult.ok) continue;
-
-    const platform = connection.platform as Phase1Platform;
+    const platform = connection.platform as Platform;
     const adapter = getAdapter(platform);
-    const health = await adapter.getConnectionHealth({ accessToken: tokenResult.value, tokenExpiry: connection.tokenExpiry });
-
-    let accessToken = tokenResult.value;
+    const health = await adapter.getConnectionHealth({ accessToken: token.accessToken, tokenExpiry: token.expiresAt, account: connection.providerUserId });
 
     if (health.tokenValidityStatus === "expired") {
-      const refreshed_ = await attemptRefresh(db, connection, creds.encryptedRefreshToken, adapter);
-      if (!refreshed_.ok) {
-        await markExpired(db, connection, platform);
-        expired += 1;
-        continue;
-      }
-      accessToken = refreshed_.accessToken;
-      refreshed += 1;
-    } else {
-      await updateConnectionStatus(db, connection.id, { tokenValidityStatus: health.tokenValidityStatus, connectionHealth: health.health });
+      await markExpired(db, connection, platform);
+      expired += 1;
+      continue;
     }
+    await updateConnectionStatus(db, connection.id, { tokenValidityStatus: health.tokenValidityStatus, connectionHealth: health.health });
+    const accessToken = token.accessToken;
 
     if (connection.agencyAccessStatus === "agency_approval_pending") {
       const assets = await listAssetsForConnection(db, connection.id);
@@ -69,32 +60,7 @@ export async function runVerificationSweep(db: AnyDb): Promise<{ checked: number
   return { checked: connections.length, expired, refreshed, reverified };
 }
 
-async function attemptRefresh(
-  db: AnyDb,
-  connection: PlatformConnection,
-  encryptedRefreshToken: string | null,
-  adapter: ReturnType<typeof getAdapter>,
-): Promise<{ ok: true; accessToken: string } | { ok: false }> {
-  if (!encryptedRefreshToken) return { ok: false };
-  const refreshToken = decryptSecret(encryptedRefreshToken);
-  if (!refreshToken.ok) return { ok: false };
-
-  const result = await adapter.refreshAuthorization({ refreshToken: refreshToken.value });
-  if (!result.ok || !result.accessToken) return { ok: false };
-
-  const newAccess = encryptSecret(result.accessToken);
-  const newRefresh = result.refreshToken ? encryptSecret(result.refreshToken) : null;
-  await upsertCredentials(db, connection.id, {
-    encryptedAccessToken: newAccess.ok ? newAccess.value : encryptedRefreshToken,
-    encryptedRefreshToken: newRefresh && newRefresh.ok ? newRefresh.value : encryptedRefreshToken,
-    expiresAt: result.expiresAt ?? null,
-  });
-  await updateConnectionStatus(db, connection.id, { tokenValidityStatus: "valid", tokenExpiry: result.expiresAt ?? null, connectionHealth: "healthy" });
-
-  return { ok: true, accessToken: result.accessToken };
-}
-
-async function markExpired(db: AnyDb, connection: PlatformConnection, platform: Phase1Platform) {
+async function markExpired(db: AnyDb, connection: PlatformConnection, platform: Platform) {
   await updateConnectionStatus(db, connection.id, { oauthAuthorizationStatus: "authorization_expired", tokenValidityStatus: "expired", connectionHealth: "needs_attention" });
   const client = await getClientByIdTrusted(db, connection.clientId);
   await logAudit(db, { organizationId: connection.organizationId, clientId: connection.clientId, actorType: "system", action: "token.expired", platform });

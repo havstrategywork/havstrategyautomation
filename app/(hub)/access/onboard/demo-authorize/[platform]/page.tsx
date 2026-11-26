@@ -1,6 +1,6 @@
 import { getAppMode } from "@/lib/access/env";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
-import { isPhase1Platform } from "@/lib/access/types";
+import { isPlatform } from "@/lib/access/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/access/ui/card";
 import { Badge } from "@/components/access/ui/badge";
 import { Button } from "@/components/access/ui/button";
@@ -19,7 +19,7 @@ export default async function DemoAuthorizePage({ params, searchParams }: { para
   const { platform } = await params;
   const { state } = await searchParams;
   const demoMode = getAppMode() === "demo";
-  const label = isPhase1Platform(platform) ? PLATFORM_CATALOG[platform].label : platform;
+  const label = isPlatform(platform) ? PLATFORM_CATALOG[platform].label : platform;
 
   if (!demoMode) {
     return (

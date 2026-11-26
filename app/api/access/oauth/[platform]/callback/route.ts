@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withDb, isResponse } from "@/lib/access/api/guard";
 import { handleOAuthCallback } from "@/lib/access/integrations/oauth-flow";
-import { isPhase1Platform } from "@/lib/access/types";
+import { isPlatform } from "@/lib/access/types";
 import { getAppUrl } from "@/lib/access/env";
 
 /**
@@ -12,7 +12,7 @@ import { getAppUrl } from "@/lib/access/env";
 export async function GET(req: Request, { params }: { params: Promise<{ platform: string }> }) {
   const { platform } = await params;
   const appUrl = getAppUrl();
-  if (!isPhase1Platform(platform)) {
+  if (!isPlatform(platform)) {
     return NextResponse.redirect(`${appUrl}/access/onboard-error?reason=unsupported_platform`);
   }
 
@@ -32,7 +32,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ platform
     .find((c) => c.startsWith(`${nonceCookieName}=`))
     ?.slice(nonceCookieName.length + 1);
 
-  const outcome = await handleOAuthCallback(db, platform, { code, error, state, nonceCookie });
+  const outcome = await handleOAuthCallback(db, platform, { code, error, state, nonceCookie, query: url.searchParams });
 
   const response = NextResponse.redirect(outcome.redirectTo);
   // One-time use - always clear, whether the callback succeeded or not.

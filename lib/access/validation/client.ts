@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ONBOARDING_STATUSES, PERMISSION_PRESETS, PHASE_1_PLATFORMS } from "@/lib/access/types";
+import { ONBOARDING_STATUSES, PERMISSION_PRESETS, PLATFORMS } from "@/lib/access/types";
 
 export const createClientSchema = z.object({
   brandName: z.string().trim().min(1).max(200),
@@ -9,7 +9,7 @@ export const createClientSchema = z.object({
   industry: z.string().trim().max(200).optional(),
   logoUrl: z.string().trim().max(2000).optional(),
   assignedManagerId: z.string().regex(/^[0-9a-f]{24}$/, "Invalid manager.").optional().nullable(),
-  requiredPlatforms: z.array(z.enum(PHASE_1_PLATFORMS)).min(1, "Select at least one platform."),
+  requiredPlatforms: z.array(z.enum(PLATFORMS)).min(1, "Select at least one platform."),
   permissionPreset: z.enum(PERMISSION_PRESETS),
   customPermissions: z.record(z.string(), z.array(z.string())).optional(),
 });
@@ -17,7 +17,7 @@ export const createClientSchema = z.object({
 export const updateClientSchema = createClientSchema.partial();
 
 export const createInvitationSchema = z.object({
-  requestedPlatforms: z.array(z.enum(PHASE_1_PLATFORMS)).min(1),
+  requestedPlatforms: z.array(z.enum(PLATFORMS)).min(1),
   personalizedMessage: z.string().trim().max(1000).optional(),
   expiryDays: z.number().int().min(1).max(60).default(14),
 });

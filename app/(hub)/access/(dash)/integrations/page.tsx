@@ -10,8 +10,7 @@ import type { PlatformMeta } from "@/lib/access/integrations/catalog";
 
 interface IntegrationsResponse {
   mode: "demo" | "production";
-  phase1: (PlatformMeta & { configured: boolean })[];
-  phase2: PlatformMeta[];
+  integrations: (PlatformMeta & { configured: boolean })[];
 }
 
 export default function IntegrationsPage() {
@@ -34,14 +33,13 @@ export default function IntegrationsPage() {
         <>
           {data.mode === "demo" ? (
             <div className="flex items-center gap-2 rounded-md border border-info-border bg-info-bg p-3 text-sm text-foreground">
-              <Clock className="h-4 w-4 text-info" /> Demo Mode is active - all Phase 1 integrations are simulated regardless of configuration.
+              <Clock className="h-4 w-4 text-info" /> Demo Mode is active - all integrations are simulated regardless of configuration.
             </div>
           ) : null}
 
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Phase 1 - available now</h2>
-            <div className="grid gap-4 sm:grid-cols-3">
-              {data.phase1.map((platform) => (
+                        <div className="grid gap-4 sm:grid-cols-3">
+              {data.integrations.map((platform) => (
                 <Card key={platform.key}>
                   <CardHeader className="flex-row items-center justify-between space-y-0">
                     <CardTitle>{platform.label}</CardTitle>
@@ -63,19 +61,6 @@ export default function IntegrationsPage() {
             </div>
           </div>
 
-          <div>
-            <h2 className="mb-3 text-sm font-semibold text-foreground">Phase 2 - coming soon</h2>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {data.phase2.map((platform) => (
-                <div key={platform.key} className="rounded-lg border border-dashed border-border p-3 text-sm text-muted">
-                  {platform.label}
-                  <Badge variant="default" className="ml-2">
-                    Upcoming
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </div>
         </>
       )}
     </div>

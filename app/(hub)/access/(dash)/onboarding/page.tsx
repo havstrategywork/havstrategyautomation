@@ -12,7 +12,7 @@ import { useToast } from "@/components/access/ui/toast";
 import { apiFetch } from "@/lib/access/api-client";
 import { formatDate, timeAgo } from "@/lib/access/utils";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
-import type { Phase1Platform } from "@/lib/access/types";
+import type { Platform } from "@/lib/access/types";
 
 interface PendingInvitation {
   id: string;
@@ -91,7 +91,7 @@ export default function OnboardingPage() {
                   <div className="mt-1 flex gap-1">
                     {item.requestedPlatforms.map((p) => (
                       <Badge key={p} variant="default">
-                        {PLATFORM_CATALOG[p as Phase1Platform]?.label ?? p}
+                        {PLATFORM_CATALOG[p as Platform]?.label ?? p}
                       </Badge>
                     ))}
                   </div>

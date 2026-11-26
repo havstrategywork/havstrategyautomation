@@ -6,12 +6,14 @@ import { CheckCircle2, ShieldCheck, Lock, RefreshCw, Unlink, AlertTriangle } fro
 import { Button } from "@/components/access/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/access/ui/card";
 import { Checkbox } from "@/components/access/ui/checkbox";
+import { Input } from "@/components/access/ui/input";
+import { normalizeShopDomain } from "@/lib/access/integrations/shopify/shop";
 import { Skeleton } from "@/components/access/ui/skeleton";
 import { useToast } from "@/components/access/ui/toast";
 import { apiFetch } from "@/lib/access/api-client";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
 import { titleCase } from "@/lib/access/utils";
-import type { DisplayConnectionStatus, Phase1Platform } from "@/lib/access/types";
+import type { DisplayConnectionStatus, Platform } from "@/lib/access/types";
 
 interface OnboardAsset {
   externalAssetId: string;
@@ -85,7 +87,7 @@ export default function OnboardingPortalPage() {
     const status = params.get("status");
     if (!platform || !status) return;
 
-    const label = PLATFORM_CATALOG[platform as Phase1Platform]?.label ?? platform;
+    const label = PLATFORM_CATALOG[platform as Platform]?.label ?? platform;
     if (status === "authorized") {
       toast({ title: `${label} authorized`, description: "Choose which accounts to share with the agency.", variant: "success" });
       load();
@@ -194,7 +196,7 @@ export default function OnboardingPortalPage() {
         <div className="space-y-4">
           {data.requestedPlatforms.map((platform) => {
             const connection = data.connections.find((c) => c.platform === platform);
-            const meta = PLATFORM_CATALOG[platform as Phase1Platform];
+            const meta = PLATFORM_CATALOG[platform as Platform];
             const status = connection?.displayStatus ?? "not_requested";
 
             return (
@@ -222,7 +224,9 @@ export default function OnboardingPortalPage() {
                   ) : null}
 
                   <div className="flex gap-2">
-                    {CONNECT_ELIGIBLE.includes(status) ? (
+                    {CONNECT_ELIGIBLE.includes(status) && platform === "shopify" ? (
+                      <ShopifyConnect href={`/api/access/public/onboard/${token}/connect/shopify`} />
+                    ) : CONNECT_ELIGIBLE.includes(status) ? (
                       <Button size="sm" asChild>
                         <a href={`/api/access/public/onboard/${token}/connect/${platform}`}>
                           {status === "not_requested" || status === "invitation_sent" ? "Connect" : "Reconnect"} {meta?.label}
@@ -264,7 +268,7 @@ export default function OnboardingPortalPage() {
                       <div>
                         <p className="font-medium text-foreground">{asset.assetName}</p>
                         <p className="text-xs text-muted">
-                          {titleCase(asset.assetType)} - {asset.externalAssetId.slice(0, 4)}***
+                          {titleCase(asset.assetType)} - ***{asset.externalAssetId.slice(-4)}
                         </p>
                       </div>
                       <Checkbox
@@ -309,6 +313,25 @@ export default function OnboardingPortalPage() {
         <p className="mt-6 text-center text-xs text-muted">
           Questions? Contact {data.organization.name} or see our <a href="/access/security" className="underline">security information</a>.
         </p>
+      </div>
+    </div>
+  );
+}
+
+/** Shopify needs to know which store before it can show its authorization screen. */
+function ShopifyConnect({ href }: { href: string }) {
+  const [shop, setShop] = useState("");
+  const domain = normalizeShopDomain(shop);
+  // A plain navigation, not a form post: the page's `form-action 'self'` policy would block the redirect to Shopify.
+  const go = () => domain && window.location.assign(`${href}?shop=${encodeURIComponent(domain)}`);
+  return (
+    <div className="w-full space-y-1.5">
+      <label htmlFor="shop-domain" className="text-xs font-medium text-foreground">Your store address</label>
+      <div className="flex gap-2">
+        <Input id="shop-domain" placeholder="your-store.myshopify.com" value={shop} onChange={(e) => setShop(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} />
+        <Button size="sm" className="h-9 shrink-0" onClick={go} disabled={!domain}>
+          Connect Shopify
+        </Button>
       </div>
     </div>
   );

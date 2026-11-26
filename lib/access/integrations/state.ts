@@ -26,12 +26,14 @@ export interface OAuthState {
   platform: string;
   nonce: string;
   scopes: string[];
+  /** Shopify only: the store domain the client asked to connect; the callback must be for the same store. */
+  account?: string;
 }
 
-export async function createOAuthState(invitationToken: string, platform: string, scopes: string[]): Promise<{ state: string; nonce: string }> {
+export async function createOAuthState(invitationToken: string, platform: string, scopes: string[], account?: string): Promise<{ state: string; nonce: string }> {
   const nonce = randomBytes(16).toString("base64url");
   const key = await getSecretKey();
-  const state = await new SignJWT({ invitationToken, platform, nonce, scopes })
+  const state = await new SignJWT({ invitationToken, platform, nonce, scopes, ...(account && { account }) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("15m")

@@ -17,7 +17,7 @@ import { apiFetch } from "@/lib/access/api-client";
 import { formatDateTime, timeAgo, titleCase } from "@/lib/access/utils";
 import { PLATFORM_CATALOG } from "@/lib/access/integrations/catalog";
 import type { Client, AuditLog } from "@/lib/access/db/schema-types";
-import type { DisplayConnectionStatus, Phase1Platform } from "@/lib/access/types";
+import type { DisplayConnectionStatus, Platform } from "@/lib/access/types";
 
 interface ConnectionWithAssets {
   id: string;
@@ -92,7 +92,7 @@ export default function ClientDetailPage() {
   async function disconnect(platform: string) {
     try {
       await apiFetch(`/api/access/clients/${clientId}/connections/${platform}/disconnect`, { method: "POST" });
-      toast({ title: `${PLATFORM_CATALOG[platform as Phase1Platform]?.label ?? platform} disconnected`, variant: "success" });
+      toast({ title: `${PLATFORM_CATALOG[platform as Platform]?.label ?? platform} disconnected`, variant: "success" });
       setDisconnectTarget(null);
       load();
     } catch (e) {
@@ -166,7 +166,7 @@ export default function ClientDetailPage() {
         <TabsContent value="connections" className="space-y-4">
           {requiredPlatforms.map((platform) => {
             const connection = connections.find((c) => c.platform === platform);
-            const meta = PLATFORM_CATALOG[platform as Phase1Platform];
+            const meta = PLATFORM_CATALOG[platform as Platform];
             return (
               <Card key={platform}>
                 <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -273,7 +273,7 @@ export default function ClientDetailPage() {
                   <div className="flex-1 text-sm">
                     <p className="text-foreground">
                       {titleCase(log.action)}
-                      {log.platform ? <span className="text-muted"> - {PLATFORM_CATALOG[log.platform as Phase1Platform]?.label ?? log.platform}</span> : null}
+                      {log.platform ? <span className="text-muted"> - {PLATFORM_CATALOG[log.platform as Platform]?.label ?? log.platform}</span> : null}
                     </p>
                     <p className="text-xs text-muted">
                       {titleCase(log.actorType)} - {formatDateTime(log.timestamp)}

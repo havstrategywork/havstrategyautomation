@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { withDb, isResponse } from "@/lib/access/api/guard";
 import { resolveInvitation } from "@/lib/access/public-onboarding";
 import { startAuthorizationWithToken } from "@/lib/access/integrations/oauth-flow";
-import { isPhase1Platform } from "@/lib/access/types";
+import { isPlatform } from "@/lib/access/types";
 import { getAppUrl } from "@/lib/access/env";
 import { rateLimit, clientIpFromHeaders } from "@/lib/access/rate-limit";
 
@@ -16,7 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const { db } = dbGuard;
   const { token, platform } = await params;
 
-  if (!isPhase1Platform(platform)) {
+  if (!isPlatform(platform)) {
     return NextResponse.redirect(`${getAppUrl()}/access/onboard/${token}?error=unsupported_platform`);
   }
 
@@ -24,7 +24,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   const { client } = resolved.value;
 
-  const result = await startAuthorizationWithToken(db, token, client.id, platform);
+  const shop = new URL(req.url).searchParams.get("shop") ?? undefined;
+  const result = await startAuthorizationWithToken(db, token, client.id, platform, shop);
   if (!result.ok) {
     return NextResponse.redirect(`${getAppUrl()}/access/onboard/${token}?platform=${platform}&status=error`);
   }
