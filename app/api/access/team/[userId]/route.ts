@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db as mongo } from "@/lib/db";
-import { roleOfHub } from "@/lib/roles";
+import { FORM_ADMIN_LOCKED, isFormAdminAccount, roleOfHub } from "@/lib/roles";
 import { isResponse, withCapability } from "@/lib/access/api/guard";
 import { parseBody } from "@/lib/access/api/validate";
 import { updateMemberRoleSchema } from "@/lib/access/validation/auth";
@@ -21,6 +21,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ userId
   const target = await getMemberById(userId);
   if (!target) return NextResponse.json({ error: "Team member not found." }, { status: 404 });
   if (userId === ctx.userId) return NextResponse.json({ error: "You cannot change your own role." }, { status: 400 });
+  if (isFormAdminAccount(target.user)) return NextResponse.json({ error: FORM_ADMIN_LOCKED }, { status: 403 });
 
   await (await mongo()).users.updateOne({ _id: target.user._id }, { $set: { role: roleOfHub(parsed.data.role) } });
   await logAudit(db, { organizationId: ctx.organizationId, actorId: ctx.userId, actorType: "agency_user", action: "team.role_updated", metadata: { targetUserId: userId, role: parsed.data.role } });
@@ -36,6 +37,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ user
   if (userId === ctx.userId) return NextResponse.json({ error: "You cannot remove your own account." }, { status: 400 });
   const target = await getMemberById(userId);
   if (!target) return NextResponse.json({ error: "Team member not found." }, { status: 404 });
+  if (isFormAdminAccount(target.user)) return NextResponse.json({ error: FORM_ADMIN_LOCKED }, { status: 403 });
 
   // Removing someone removes their login for the whole platform (dashboard + Access Hub) and signs them out everywhere.
   const m = await mongo();

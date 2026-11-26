@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db as mongo } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
-import { roleOfHub } from "@/lib/roles";
+import { FORM_ADMIN, FORM_ADMIN_LOCKED, roleOfHub } from "@/lib/roles";
 import { isResponse, withCapability, withSession } from "@/lib/access/api/guard";
 import { parseBody } from "@/lib/access/api/validate";
 import { createTeamMemberSchema } from "@/lib/access/validation/auth";
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
   const parsed = await parseBody(req, createTeamMemberSchema);
   if (!parsed.ok) return parsed.response;
   const input = parsed.data;
+  if (input.email === FORM_ADMIN) return NextResponse.json({ error: FORM_ADMIN_LOCKED }, { status: 403 }); // nobody else may set that account's password
 
   const { users } = await mongo();
   if (await users.findOne({ $or: [{ username: input.email }, { email: input.email }] })) return NextResponse.json({ error: "A user with this email already exists." }, { status: 409 });
