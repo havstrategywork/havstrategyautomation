@@ -26,29 +26,37 @@ function FileField({ field, value, onChange }: { field: Field; value: string; on
   const [pct, setPct] = useState<number | null>(null), [err, setErr] = useState(""), [over, setOver] = useState(false), input = useRef<HTMLInputElement>(null);
   const { startUpload } = useUploadThing("onboardingFile", { onUploadProgress: setPct, onUploadError: (e) => setErr(e.message || "Upload failed. Try again.") });
   const have = lines(value);
+  const received = have.length > 0;
   async function add(files: File[]) {
     if (!files.length) return;
     setErr("");
-    if (have.length + files.length > 10) return setErr("You can add up to 10 files here.");
+    if (files.length > 5) return setErr("You can upload up to 5 files at a time.");
     setPct(0);
     const res = await startUpload(files.slice(0, 5));
     setPct(null);
-    if (res?.length) onChange([...have, ...res.map((r) => `${r.name} — ${r.ufsUrl}`)].join("\n"));
+    if (res?.length) onChange(res.map((r) => `${r.name} — ${r.ufsUrl}`).join("\n"));
   }
+  const receivedTitle = have.length === 1 ? `Image / file received (${fileName(have[0])})` : `${have.length} files received`;
   return (
     <div>
-      <button type="button" className={`ob-drop${over ? " over" : ""}`} onClick={() => input.current?.click()}
+      <button type="button" className={`ob-drop${received ? " received" : ""}${over ? " over" : ""}`} onClick={() => input.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); void add([...e.dataTransfer.files]); }}>
-        <Svg d="M12 16V4M7 9l5-5 5 5M4 20h16" /><span><b>Click to upload</b> or drag files here</span><span>Up to 16MB each</span>
+        <Svg d={received ? CHECK : "M12 16V4M7 9l5-5 5 5M4 20h16"} />
+        {received ? (
+          <>
+            <span><b>{receivedTitle}</b></span>
+            <span>If you want to change, click again or drop new files</span>
+          </>
+        ) : (
+          <>
+            <span><b>Click to upload</b> or drag files here</span>
+            <span>Up to 16MB each</span>
+          </>
+        )}
       </button>
       <input ref={input} type="file" multiple hidden onChange={(e) => { void add([...(e.target.files ?? [])]); e.target.value = ""; }} />
       {pct !== null && <div className="ob-bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Uploading ${field.label}`}><i style={{ width: `${pct}%` }} /></div>}
       {err && <div className="ob-err" role="alert">{err}</div>}
-      {have.length > 0 && (
-        <ul className="ob-files">
-          {have.map((l, i) => <li key={l}><Svg d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5" /><span>{fileName(l)}</span><button type="button" aria-label={`Remove ${fileName(l)}`} onClick={() => onChange(have.filter((_, j) => j !== i).join("\n"))}>✕</button></li>)}
-        </ul>
-      )}
     </div>
   );
 }

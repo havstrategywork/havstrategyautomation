@@ -254,7 +254,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                     {!cl?.dmTemplate && !b.message && b.draftMessage && <span className="small">Drafted by Cowork: edit it as you like.</span>}
                   </label>
                   <label>Follow-up if they don&apos;t reply in 3 days (optional, sent once)
-                    <textarea name="followUp" rows={7} defaultValue={cl?.followUpTemplate ?? b.followUp ?? ""} placeholder="Leave empty to use the standard 4 follow-ups (day 1, 2, 5, 10). Or write your own, separated by a line with ---. Type none for no follow-ups." />
+                    <textarea name="followUp" rows={7} defaultValue={cl?.followUpTemplate ?? b.followUp ?? ""} placeholder="Leave empty to use the standard 2 follow-ups (day 3, 6). Or write your own, separated by a line with ---. Type none for no follow-ups." />
                   </label>
                 </div>
                 <div className="row spread">

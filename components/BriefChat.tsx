@@ -48,7 +48,7 @@ export default function BriefChat({ appUrl = "", apiKey = "", edit }: { appUrl?:
     rows.map((r) => `${r.count} × ${r.tier} at up to ${money(r.budget, b.currency)}`).join(" · "),
     b.other.trim() || "None",
     b.message.trim() ? `“${b.message.trim().slice(0, 90)}${b.message.trim().length > 90 ? "…" : ""}”` : "Skipped, Cowork will draft one",
-    b.followUp.trim() ? `“${b.followUp.trim().slice(0, 90)}${b.followUp.trim().length > 90 ? "…" : ""}”` : "Standard 4 follow-ups (day 1, 2, 5, 10)",
+    b.followUp.trim() ? `“${b.followUp.trim().slice(0, 90)}${b.followUp.trim().length > 90 ? "…" : ""}”` : "Standard 2 follow-ups (day 3, 6)",
     b.sheetUrl.trim() ? "New “Content creators” tab in their sheet" : "Skipped, we'll make a fresh sheet",
   ][i];
   const submit = async () => {
@@ -136,7 +136,7 @@ export default function BriefChat({ appUrl = "", apiKey = "", edit }: { appUrl?:
 
             {b.step === 3 && <textarea rows={4} placeholder="Optional" value={b.other} maxLength={2000} onChange={(e) => set({ other: e.target.value })} />}
             {b.step === 4 && <textarea rows={6} placeholder="Optional. Use {{name}} where the creator's name goes." value={b.message} maxLength={2000} onChange={(e) => set({ message: e.target.value })} />}
-            {b.step === 5 && <textarea rows={8} placeholder={"Optional (empty = standard 4 follow-ups; none = no follow-ups). Or write your own, up to 4 follow-ups (day 1, 2, 5, 10), separated by a line with ---\nHi {{name}}, just bumping this in case it got buried!\n---\nSecond follow-up text...\n---\nThird...\n---\nFourth..."} value={b.followUp} maxLength={4000} onChange={(e) => set({ followUp: e.target.value })} />}
+            {b.step === 5 && <textarea rows={8} placeholder={"Optional (empty = standard 2 follow-ups; none = no follow-ups). Or write your own, up to 2 follow-ups (day 3, 6), separated by a line with ---\nHi {{name}}, just bumping this in case it got buried!\n---\nFinal follow-up text..."} value={b.followUp} maxLength={4000} onChange={(e) => set({ followUp: e.target.value })} />}
             {b.step === 6 && (
               <>
                 <input type="url" placeholder="https://docs.google.com/spreadsheets/d/…" value={b.sheetUrl} maxLength={300} onChange={(e) => set({ sheetUrl: e.target.value })} onKeyDown={(e) => e.key === "Enter" && next()} />

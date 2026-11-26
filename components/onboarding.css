@@ -2,6 +2,7 @@
    and the page pins color-scheme to light, so a visitor's dark mode or the dashboard theme can never change it. */
 html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 /* a logged-in team member previewing the page gets it without the dashboard chrome */
+.shell:has(.ob) { display: block; } /* drop the sidebar column too, or .main lands in the 252px one */
 .shell:has(.ob) > :not(.main) { display: none; }
 .main:has(.ob) { padding: 0; max-width: none; }
 .main:has(.ob)::before { display: none; }
@@ -114,12 +115,17 @@ html:has(.ob), body:has(.ob) { color-scheme: only light; background: #faf7f2; }
 
 .ob-drop { display: grid; justify-items: center; gap: .25rem; text-align: center; padding: 1.2rem 1rem; border: 1.5px dashed var(--line-2); border-radius: 14px; background: #fcfbf9; color: var(--muted); font-size: 13.5px; transition: all .2s; cursor: pointer; width: 100%; }
 .ob-drop:hover, .ob-drop.over { border-color: var(--a1); background: var(--tint); color: var(--a1); }
+.ob-drop.received { border-color: var(--good); background: #f2fbf6; }
+.ob-drop.received:hover, .ob-drop.received.over { border-color: var(--a1); background: var(--tint); }
 .ob-drop svg { width: 22px; height: 22px; }
+.ob-drop.received svg { color: var(--good); }
 .ob-drop b { color: var(--ink); font-weight: 600; }
+.ob-drop span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ob-bar { height: 4px; border-radius: 4px; background: #efebe3; overflow: hidden; margin-top: .6rem; }
 .ob-bar i { display: block; height: 100%; background: var(--grad); transition: width .2s; }
 .ob-files { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; gap: .4rem; }
 .ob-files li { display: flex; align-items: center; gap: .6rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 13.5px; animation: ob-rise .35s both; }
+.ob-files li svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
 .ob-files li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ob-files button { all: unset; cursor: pointer; color: var(--muted); padding: .1rem .4rem; border-radius: 6px; }
 .ob-files button:hover { color: var(--bad); background: #fdeceb; }

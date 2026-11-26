@@ -132,7 +132,7 @@ in to the brand account in this Chrome.
    - followUp false (a first DM): if prior is true (our account already messaged this creator), nothing was sent: report
      POST /api/outreach/<id>/sent {"ok":false,"error":"already contacted"}. If sent and marker is empty: POST /api/outreach/<id>/sent {"ok":true}.
      If marker is not empty: report {"ok":false,"error":"not delivered: <the text shown>"}.
-   - followUp true (one of up to 4 follow-ups): do NOT send if the creator replied at all or any conversation is going on (they wrote to us, or a person answered
+   - followUp true (one of up to 2 follow-ups): do NOT send if the creator replied at all or any conversation is going on (they wrote to us, or a person answered
      them): report {"ok":false,"error":"creator replied"}; or if our last message is less than 20 hours old: {"ok":false,"error":"too soon"}. Otherwise send it, then report {"ok":true}.
    - Message button or textbox never appeared (private account, can't DM, page not loading): reload the profile ONCE and retry the script; if it still fails
      report {"ok":false,"error":"<why>"} and continue (not a block, unless Instagram shows a restriction: rule 2).

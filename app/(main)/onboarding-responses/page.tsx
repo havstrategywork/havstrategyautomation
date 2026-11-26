@@ -68,9 +68,9 @@ export default async function Responses() {
                 <div className="who"><Avatar name={r.answers.company || r.answers.name || "?"} /><div className="two"><b>{r.answers.company || "(no company)"}</b><small>{r.answers.name} · {r.answers.email} · {ago(r.at)}</small></div></div>
                 <div className="row">
                   {r.services.map((s) => <span key={s} className="chip">{label(s)}</span>)}
-                  <span className={`pill ${r.sheet?.ok ? "live" : r.sheet ? "bad" : ""}`} title={r.sheet?.error}><i />{r.sheet?.ok ? "In sheet" : r.sheet ? "Sheet failed" : on ? "Pending" : "Not synced"}</span>
-                  {r.notion?.ok ? <a className="pill live" href={r.notion.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}><i />Brief ↗</a>
-                    : <span className={`pill ${r.notion ? "bad" : ""}`} title={r.notion?.error}><i />{r.notion ? "Brief failed" : notionOn ? "Brief pending" : "No brief"}</span>}
+                  <span className={`pill ${r.sheet?.ok ? "live" : r.sheet ? "bad" : ""}`} title={r.sheet?.error}>{r.sheet?.ok ? "In sheet" : r.sheet ? "Sheet failed" : on ? "Pending" : "Not synced"}</span>
+                  {r.notion?.ok ? <a className="pill live" href={r.notion.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>Brief ↗</a>
+                    : <span className={`pill ${r.notion ? "bad" : ""}`} title={r.notion?.error}>{r.notion ? "Brief failed" : notionOn ? "Brief pending" : "No brief"}</span>}
                 </div>
               </div>
               {r.sheet?.error && <div className="small" style={{ color: "var(--bad)", marginTop: ".4rem" }}>{r.sheet.error}</div>}

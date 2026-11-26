@@ -5,6 +5,7 @@ import { ObjectId } from "mongodb";
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
 import { currentUser } from "@/lib/session";
+import { canView } from "@/lib/roles";
 import { db } from "@/lib/db";
 
 const f = createUploadthing();
@@ -38,6 +39,14 @@ export const ourFileRouter = {
     .onUploadComplete(async ({ metadata, file }) => {
       await (await db()).clients.updateOne({ _id: new ObjectId(metadata.clientId) }, { $set: { guidelinesFileUrl: file.ufsUrl, guidelinesFileName: file.name } });
     }),
+  // Media for the social planner (one image or video per post). Buffer fetches it from this public URL when the post goes out, so it stays up.
+  socialMedia: f({ image: { maxFileSize: "16MB", maxFileCount: 1 }, video: { maxFileSize: "256MB", maxFileCount: 1 } })
+    .middleware(async () => {
+      const me = await currentUser();
+      if (!me || !canView(me.role, "/social/planner")) throw new UploadThingError("sign in first");
+      return {};
+    })
+    .onUploadComplete(async () => ({})),
   // PUBLIC: the onboarding form's uploads (logos, brand manual, customer list...). No login, so it is capped hard: 16MB a file, 5 files a field.
   // Types are limited by uploadthing's categories; the form only ever stores the resulting URLs.
   onboardingFile: f({ image: { maxFileSize: "16MB", maxFileCount: 5 }, pdf: { maxFileSize: "16MB", maxFileCount: 5 }, blob: { maxFileSize: "16MB", maxFileCount: 5 } })

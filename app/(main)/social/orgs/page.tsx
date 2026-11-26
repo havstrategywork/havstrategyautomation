@@ -2,9 +2,12 @@ import { ObjectId } from "mongodb";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
+import { bufferKey, listChannels, BufferError, type Channel } from "@/lib/buffer";
 import { cfg, missingEnv } from "@/lib/meta";
 import { currentUser } from "@/lib/session";
-import { Avatar, PageHead, ago } from "@/components/ui";
+import { Avatar, Icon, ago } from "@/components/ui";
+import { Empty, SocialHead } from "@/components/social";
+import Select from "@/components/mui/Select";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +39,29 @@ async function removeOrg(f: FormData) {
   revalidatePath("/social/orgs"); done("Organization deleted.");
 }
 
+// The channel's details are looked up from Buffer again, never taken from the form, so a forged request can only link a channel the API key can really see.
+async function linkChannel(f: FormData) {
+  "use server";
+  await admin();
+  const id = oid(f), channelId = String(f.get("channel") ?? ""), { orgs } = await db();
+  if (!id || !channelId) return done("Pick a channel to link.");
+  let ch: Channel | undefined;
+  try { ch = (await listChannels()).find((c) => c.id === channelId); } catch (e) { return done(e instanceof BufferError ? e.message : "Could not reach Buffer."); }
+  if (!ch) return done("Buffer does not list that channel.");
+  if (await orgs.findOne({ "buffer.channelId": ch.id })) return done(`${ch.name} is already linked to an organization.`);
+  await orgs.updateOne({ _id: id }, { $push: { buffer: { channelId: ch.id, organizationId: ch.organizationId, name: ch.displayName || ch.name, service: ch.service, ...(ch.avatar && { avatar: ch.avatar }) } } });
+  revalidatePath("/social/orgs"); done(`Linked ${ch.name}.`);
+}
+
+async function unlinkChannel(f: FormData) {
+  "use server";
+  await admin();
+  const id = oid(f), { orgs } = await db();
+  if (!id) return done("No such organization.");
+  await orgs.updateOne({ _id: id }, { $pull: { buffer: { channelId: String(f.get("channel") ?? "") } } });
+  revalidatePath("/social/orgs"); done("Channel unlinked.");
+}
+
 async function disconnect(f: FormData) {
   "use server";
   await admin();
@@ -52,51 +78,88 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
   const { orgs, botConnections } = await db();
   const [list, conns] = await Promise.all([orgs.find().sort({ name: 1 }).toArray(), botConnections.find().sort({ username: 1 }).toArray()]);
   const missing = missingEnv(), app = cfg().app || "<APP_URL>";
+  let channels: Channel[] = [], bufferError = "";
+  if (!bufferKey()) bufferError = "BUFFER_API_KEY is not set in the environment. Create a key at publish.buffer.com/settings/api.";
+  else try { channels = await listChannels(); } catch (e) { bufferError = e instanceof BufferError ? e.message : "Could not reach Buffer."; }
+  const taken = new Set(list.flatMap((o) => (o.buffer ?? []).map((b) => b.channelId)));
+  const free = channels.filter((c) => !taken.has(c.id) && !c.locked);
 
   return (
     <>
-      <PageHead title="Organizations" sub="Each org is one client. Connect its Instagram accounts through Meta: they power both the Reports and the Chat bots." />
+      <SocialHead
+        icon="layers" title="Organizations"
+        sub="Each organization is one client. Link its Buffer channels for the Planner and Reports; connect Instagram through Meta only if you use the Chat bots."
+        actions={
+          <form action={addOrg} className="inline-form">
+            <input name="name" required maxLength={80} autoComplete="off" placeholder="New client or brand name" aria-label="Organization name" />
+            <button><Icon name="plus" size={16} /> Add organization</button>
+          </form>
+        }
+      />
       {m && <div className="notice" role="status">{m}</div>}
+      {bufferError && <div className="notice warn"><b>Buffer is not connected.</b> {bufferError}</div>}
       {missing.length > 0 && (
-        <div className="notice" style={{ borderLeftColor: "var(--warn)" }}>
-          <b>The Meta app is not set up yet.</b> Missing in the environment: {missing.join(", ")}.
-          <div className="small muted" style={{ marginTop: ".35rem" }}>In the Meta app: use case &quot;Manage messaging &amp; content on Instagram&quot; with Unified login. In the login configuration include the permissions <code>instagram_business_basic</code>, <code>instagram_business_manage_messages</code> and <code>instagram_business_manage_insights</code> (Meta&apos;s current names; older apps may show them without &quot;business_&quot;). Redirect URL <code>{app}/api/meta/callback</code>. Webhook callback URL <code>{app}/api/meta/webhook</code> with the same verify token as META_VERIFY_TOKEN, subscribed to <code>messages</code> and <code>messaging_postbacks</code>. META_CONFIG_ID is the login configuration&apos;s id.</div>
-        </div>
+        <details className="notice warn setup">
+          <summary><b>The Meta app (Chat bots only) is not set up yet.</b> Missing: {missing.join(", ")}. <span className="muted">Show setup steps</span></summary>
+          <div className="small">In the Meta app: use case &quot;Manage messaging &amp; content on Instagram&quot; with Unified login. In the login configuration include the permissions <code>instagram_business_basic</code> and <code>instagram_business_manage_messages</code> (Meta&apos;s current names; older apps may show them without &quot;business_&quot;). Redirect URL <code>{app}/api/meta/callback</code>. Webhook callback URL <code>{app}/api/meta/webhook</code> with the same verify token as META_VERIFY_TOKEN, subscribed to <code>messages</code> and <code>messaging_postbacks</code>. META_CONFIG_ID is the login configuration&apos;s id.</div>
+        </details>
       )}
 
-      <form action={addOrg} className="card form">
-        <h2 style={{ margin: 0 }}>Add an organization</h2>
-        <div className="row" style={{ flexWrap: "nowrap" }}><input name="name" required maxLength={80} autoComplete="off" placeholder="Client or brand name" /><button>Add</button></div>
-      </form>
-
-      <div className="grid" style={{ marginTop: "1rem" }}>
-        {list.map((o) => {
-          const mine = conns.filter((c) => String(c.orgId) === String(o._id));
-          return (
-            <div key={String(o._id)} className="card">
-              <div className="row spread">
-                <div className="who"><Avatar name={o.name} /><div className="two"><b>{o.name}</b><small>{mine.length} Instagram account{mine.length === 1 ? "" : "s"} connected</small></div></div>
-                <div className="row">
-                  <a className="btn ghost small-btn" href={`/social/connect/start?org=${o._id}`}>Connect Instagram</a>
-                  <form action={removeOrg}><input type="hidden" name="id" value={String(o._id)} /><button className="ghost small-btn" style={{ color: "var(--bad)" }}>Delete</button></form>
+      {!list.length ? <Empty icon="layers" title="No organizations yet">Add your first client with the field above.</Empty> : (
+        <div className="grid">
+          {list.map((o) => {
+            const mine = conns.filter((c) => String(c.orgId) === String(o._id)), linkedCh = o.buffer ?? [];
+            return (
+              <section key={String(o._id)} className="card org-admin">
+                <div className="org-admin-head">
+                  <div className="who"><Avatar name={o.name} large /><div className="two"><b>{o.name}</b><small>{linkedCh.length} Buffer channel{linkedCh.length === 1 ? "" : "s"} · {mine.length} Instagram account{mine.length === 1 ? "" : "s"}</small></div></div>
+                  <form action={removeOrg}><input type="hidden" name="id" value={String(o._id)} /><button className="ghost small-btn danger-txt" title={mine.length ? "Disconnect its Instagram accounts first" : "Delete this organization"}><Icon name="trash" size={14} /> Delete</button></form>
                 </div>
-              </div>
-              {mine.length ? (
-                <ul className="feed" style={{ marginTop: ".6rem" }}>
-                  {mine.map((c) => (
-                    <li key={String(c._id)}>
-                      <Avatar name={c.username ?? c.igId} />
-                      <div className="two"><b>@{c.username ?? c.igId}</b><small>connected {ago(c.connectedAt)}{c.test ? " · TEST connection (no Meta, nothing is sent)" : c.subscribed === false ? " · webhook not subscribed" : ""}</small>{c.lastError && <small style={{ color: "var(--bad)" }}>Last problem ({ago(c.lastError.at)}): {c.lastError.message}</small>}</div>
-                      <form action={disconnect} style={{ marginLeft: "auto" }}><input type="hidden" name="id" value={String(c._id)} /><button className="ghost small-btn" style={{ color: "var(--bad)" }}>Disconnect</button></form>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="muted small" style={{ margin: ".6rem 0 0" }}>None yet. Click &quot;Connect Instagram&quot; and have the client approve their account.</p>}
-            </div>
-          );
-        })}
-        {!list.length && <div className="card empty">No organizations yet.</div>}
-      </div>
+
+                <div className="org-split">
+                  <div className="panel">
+                    <div className="panel-head"><span className="ico info"><Icon name="link" /></span><div className="two"><b>Buffer channels</b><small>Used by Planner and Reports</small></div></div>
+                    {linkedCh.length > 0 ? (
+                      <ul className="feed">
+                        {linkedCh.map((b) => (
+                          <li key={b.channelId}>
+                            <Avatar name={b.name} />
+                            <div className="two"><b>{b.name}</b><small>{b.service}</small></div>
+                            <form action={unlinkChannel} style={{ marginLeft: "auto" }}><input type="hidden" name="id" value={String(o._id)} /><input type="hidden" name="channel" value={b.channelId} /><button className="ghost small-btn danger-txt">Unlink</button></form>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="panel-empty">No channels linked yet.</p>}
+                    {free.length > 0 && (
+                      <form action={linkChannel} className="inline-form">
+                        <input type="hidden" name="id" value={String(o._id)} />
+                        <Select name="channel" ariaLabel="Buffer channel to link" options={[{ value: "", label: "Pick a Buffer channel…" }, ...free.map((c) => ({ value: c.id, label: `${c.displayName || c.name} (${c.service})${c.disconnected ? " - disconnected in Buffer" : ""}` }))]} />
+                        <button className="small-btn">Link</button>
+                      </form>
+                    )}
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-head"><span className="ico violet"><Icon name="camera" /></span><div className="two"><b>Instagram via Meta</b><small>Used by Chat bots only</small></div></div>
+                    {mine.length ? (
+                      <ul className="feed">
+                        {mine.map((c) => (
+                          <li key={String(c._id)}>
+                            <Avatar name={c.username ?? c.igId} />
+                            <div className="two" style={{ minWidth: 0 }}><b>@{c.username ?? c.igId}</b><small>connected {ago(c.connectedAt)}{c.test ? " · TEST connection (no Meta, nothing is sent)" : c.subscribed === false ? " · webhook not subscribed" : ""}</small>{c.lastError && <small className="bad-txt">Last problem ({ago(c.lastError.at)}): {c.lastError.message}</small>}</div>
+                            <form action={disconnect} style={{ marginLeft: "auto" }}><input type="hidden" name="id" value={String(c._id)} /><button className="ghost small-btn danger-txt">Disconnect</button></form>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="panel-empty">None yet. Connect one and have the client approve their account.</p>}
+                    <a className="btn ghost small-btn" href={`/social/connect/start?org=${o._id}`} style={{ alignSelf: "flex-start" }}><Icon name="plug" size={14} /> Connect Instagram</a>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }

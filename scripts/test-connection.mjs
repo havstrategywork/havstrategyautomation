@@ -2,7 +2,7 @@
 //   node --env-file=.env.local --experimental-strip-types scripts/test-connection.mjs                 -> only lists the organizations
 //   node --env-file=.env.local --experimental-strip-types scripts/test-connection.mjs "Org name"      -> adds the test account
 //   node --env-file=.env.local --experimental-strip-types scripts/test-connection.mjs "Org name" remove -> removes it and its flows
-// The connection is flagged test:true: it holds no real token and the bot engine never sends anything through it. Reports show made-up demo numbers for it,
+// The connection is flagged test:true: it holds no real token and the bot engine never sends anything through it. It is only for trying the bot builder,
 // and three sample chat-bot flows are added (once) so the builder has something to open.
 import { MongoClient } from "mongodb";
 import { parseFlow } from "../lib/botflow.ts";
@@ -58,7 +58,7 @@ if (name) {
     const igId = `test-${org._id}`, have = new Set((await d.collection("botFlows").find({ igId }).toArray()).map((f) => f.name)), now = new Date();
     const fresh = DEMO_FLOWS.filter((f) => !have.has(f.name));
     if (fresh.length) await d.collection("botFlows").insertMany(fresh.map((f, i) => ({ orgId: org._id, igId, name: f.name, enabled: f.enabled, nodes: f.nodes, edges: f.edges, createdAt: new Date(+now + i), updatedAt: now })));
-    console.log(`\nadded test connection @test_account to "${org.name}" (Reports show demo data for it) and ${fresh.length} sample flow${fresh.length === 1 ? "" : "s"}${have.size ? `, ${have.size} already there` : ""}.`);
+    console.log(`\nadded test connection @test_account to "${org.name}" and ${fresh.length} sample flow${fresh.length === 1 ? "" : "s"}${have.size ? `, ${have.size} already there` : ""}.`);
   }
 }
 await c.close();

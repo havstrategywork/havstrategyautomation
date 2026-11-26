@@ -22,8 +22,8 @@ assert.equal(nextStep(sent(30), 0, undefined, now, []), -1); // empty schedule t
 assert.equal(nextStep({ status: "DM Sent" }, 0, undefined, now, S), -1); // never sent
 assert.deepEqual(stepTexts("a\n---\n b \n----\n\nc"), ["a", "b", "c"]); // texts split on a --- line
 assert.deepEqual(stepTexts("just one"), ["just one"]); // old single follow-up = step 1 only
-assert.equal(stepTexts(undefined).length, 4); // no text of its own = the 4 default follow-ups (on by default)
-assert.equal(stepTexts("  ").length, 4);
+assert.equal(stepTexts(undefined).length, 2); // no text of its own = the 2 default follow-ups (on by default)
+assert.equal(stepTexts("  ").length, 2);
 assert.deepEqual(stepTexts("None"), []); // opt out per client
 for (const t of ["This account can’t receive your message", "Message not delivered", "Couldn't send", "can't receive your message"]) assert.ok(UNDELIVERED.test(t), t);
 assert.equal(UNDELIVERED.test("no Message button on the profile"), false); // only real delivery failures count
