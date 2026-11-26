@@ -202,29 +202,35 @@ export async function completeAssetSelection(
   const verification = await reverifyConnectionAssets(db, connectionId, token.accessToken, selected);
   if (guidance && verification?.agencyAccessStatus === "agency_approval_pending") await updateConnectionStatus(db, connectionId, { errorMessage: guidance });
 
-  await recomputeOnboardingStatus(db, client.id);
+  return { ok: true as const, anyPending, anyDenied, verification };
+}
 
-  const latestInvitation = await getLatestInvitationForClient(db, client.id);
-  const required = client.requiredPlatforms as string[];
-  const allConnections = await listConnectionsForClient(db, client.id);
-  const allDone = required.every((p) => {
-    const c = allConnections.find((c) => c.platform === p);
+/**
+ * Brings the client's status up to date and, the first time every requested platform is granted, closes the invitation and tells the team.
+ * Approval can arrive long after the client picked their accounts (e.g. a Google Ads manager link), so this runs after every verification.
+ */
+async function finishOnboardingIfDone(db: AnyDb, organizationId: string, clientId: string) {
+  await recomputeOnboardingStatus(db, clientId);
+  const client = await getClientById(db, organizationId, clientId);
+  if (!client || client.archivedAt) return;
+  const latestInvitation = await getLatestInvitationForClient(db, clientId);
+  if (!latestInvitation || latestInvitation.completedAt) return;
+  const connections = await listConnectionsForClient(db, clientId);
+  const allDone = client.requiredPlatforms.every((p) => {
+    const c = connections.find((c) => c.platform === p);
     return c?.agencyAccessStatus === "granted" && c.assetSelectionStatus === "completed";
   });
-  if (allDone && latestInvitation && !latestInvitation.completedAt) {
-    await markInvitationCompleted(db, latestInvitation.id);
-    const members = await listOrganizationMembers(db, connection.organizationId);
-    await notify(db, {
-      organizationId: connection.organizationId,
-      clientId: client.id,
-      type: "onboarding_completed",
-      recipients: members.map((m) => ({ kind: "agency_user" as const, userId: m.userId, email: m.email })),
-      context: { brandName: client.brandName },
-    });
-    await trackEvent(db, { organizationId: connection.organizationId, clientId: client.id, eventType: "onboarding_completed" });
-  }
-
-  return { ok: true as const, anyPending, anyDenied, verification };
+  if (!allDone) return;
+  await markInvitationCompleted(db, latestInvitation.id);
+  const members = await listOrganizationMembers(db, organizationId);
+  await notify(db, {
+    organizationId,
+    clientId,
+    type: "onboarding_completed",
+    recipients: members.map((m) => ({ kind: "agency_user" as const, userId: m.userId, email: m.email })),
+    context: { brandName: client.brandName },
+  });
+  await trackEvent(db, { organizationId, clientId, eventType: "onboarding_completed" });
 }
 
 async function reverifyConnectionAssets(db: AnyDb, connectionId: string, accessToken: string, assets: DiscoveredAsset[]) {
@@ -274,7 +280,8 @@ async function reverifyConnectionAssets(db: AnyDb, connectionId: string, accessT
     agencyAccessStatus,
     connectionHealth,
     lastVerifiedAt: new Date(),
-    errorMessage: overallInsufficient ? "Granted permissions do not fully cover what this client's plan requires." : null,
+    // While approval is pending, keep (or refresh) the instructions telling the client what to do; clear them once it's resolved.
+    errorMessage: overallInsufficient ? "Granted permissions do not fully cover what this client's plan requires." : overallGranted ? null : agencyResults.find((r) => r.status === "agency_approval_pending" && r.error)?.error,
   });
 
   if (client) {
@@ -285,6 +292,8 @@ async function reverifyConnectionAssets(db: AnyDb, connectionId: string, accessT
       await trackEvent(db, { organizationId: connection.organizationId, clientId: client.id, eventType: "platform_connected", platform });
     }
   }
+
+  await finishOnboardingIfDone(db, connection.organizationId, connection.clientId);
 
   return { agencyAccessStatus, connectionHealth };
 }

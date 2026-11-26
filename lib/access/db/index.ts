@@ -1,7 +1,7 @@
 import type { Collection, Db, FindOptions } from "mongodb";
 import { mongoDb } from "@/lib/db";
 import type {
-  AccessRequest, AnalyticsEvent, AuditLog, Client, ConnectedAsset, EncryptedCredential, Notification, OnboardingInvitation, Organization, PlatformConnection,
+  AccessRequest, AgencyCredential, AnalyticsEvent, AuditLog, Client, ConnectedAsset, EncryptedCredential, Notification, OnboardingInvitation, Organization, PlatformConnection,
 } from "./schema-types";
 
 /**
@@ -19,6 +19,7 @@ export interface HubDb {
   auditLogs: Collection<AuditLog>;
   notifications: Collection<Notification>;
   analytics: Collection<AnalyticsEvent>;
+  agencyCredentials: Collection<AgencyCredential>;
 }
 export type AnyDb = HubDb;
 export type GetDbResult = { ok: true; db: HubDb } | { ok: false; error: string };
@@ -41,6 +42,7 @@ async function setupIndexes(d: Db) {
     d.collection("hub_audit_logs").createIndex({ organizationId: 1, timestamp: -1 }),
     d.collection("hub_notifications").createIndex({ organizationId: 1, recipientId: 1, createdAt: -1 }),
     d.collection("hub_analytics").createIndex({ organizationId: 1, eventType: 1 }),
+    d.collection("hub_agency_credentials").createIndex({ provider: 1 }, { unique: true }),
   ]);
 }
 
@@ -62,6 +64,7 @@ export async function getDb(): Promise<GetDbResult> {
         auditLogs: d.collection<AuditLog>("hub_audit_logs"),
         notifications: d.collection<Notification>("hub_notifications"),
         analytics: d.collection<AnalyticsEvent>("hub_analytics"),
+        agencyCredentials: d.collection<AgencyCredential>("hub_agency_credentials"),
       },
     };
   } catch (e) {

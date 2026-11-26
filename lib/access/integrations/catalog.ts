@@ -32,7 +32,8 @@ export const PLATFORM_CATALOG: Record<Platform, PlatformMeta> = {
     label: "Google Ads",
     clientExplanation:
       "Lets our team see your Google Ads account's performance and, once you approve the manager-account link, run and optimize campaigns.",
-    officialDocsUrl: "https://developers.google.com/google-ads/api/docs/oauth/overview",
+    officialDocsUrl: "https://developers.google.com/google-ads/api/docs/account-management/linking-manager-accounts",
+    requiresVerification: "Not yet tried on a live account. Automatic access requests need at least Basic API access on your Google Cloud project.",
   },
   google_analytics_4: {
     key: "google_analytics_4",

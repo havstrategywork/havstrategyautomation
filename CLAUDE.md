@@ -226,7 +226,9 @@ dashboard `users` (`lib/access/db/queries/users.ts`); the Hub's Team page adds/e
   `hub_audit_logs`, `hub_notifications`, `hub_analytics`); typed handle `lib/access/db/index.ts`, document shapes `schema-types.ts`, queries `db/queries/*`. Indexes are created on first use; no migration step, no second database.
 - Integrations: one adapter per platform in `lib/access/integrations/*`, listed in `PLATFORMS` (`lib/access/types.ts`), scopes per permission preset in `config/permission-presets.ts`. Google access tokens and Shopify offline tokens
   expire after about an hour, so provider calls go through `getFreshAccessToken` (`integrations/fresh-token.ts`). GA4 / Tag Manager "agency access" = adding `GOOGLE_AGENCY_EMAIL` to the chosen property / container;
-  Shopify = the client types their `*.myshopify.com` domain and installs the agency app (callback HMAC-checked, expiring offline tokens). GA4, Tag Manager and Shopify are untested against live accounts.
+  Google Ads = a manager-account link: an admin connects the agency's MCC once on Access Hub > Integrations (refresh token encrypted in `hub_agency_credentials`, `google-ads/agency.ts`), the invitation is sent and checked with THAT token (never the client's), and the client accepts it in Google Ads.
+  Needs `GOOGLE_ADS_MANAGER_CUSTOMER_ID` and Basic API access on the Cloud project; no developer token;
+  Shopify = the client types their `*.myshopify.com` domain and installs the agency app (callback HMAC-checked, expiring offline tokens). Google Ads, GA4, Tag Manager and Shopify are untested against live accounts.
 - `APP_MODE` only picks the OAuth providers: `demo` (default locally) = simulated Meta/Google authorization screens, `production` (default on Vercel) = the real providers.
   Production needs `SESSION_SECRET` (signs the OAuth state), `TOKEN_ENCRYPTION_KEY_REFERENCE` (AES key for stored tokens, `openssl rand -base64 32`) and `CRON_SECRET` (`/api/access/cron/*`), plus the Meta/Google app credentials.
 - Public (no login): `/access/onboard/*` (the link we send clients), `/access/privacy|terms|security|contact|data-deletion`, and `/api/access/public|oauth|cron` (token / CRON_SECRET).

@@ -96,6 +96,15 @@ export interface EncryptedCredential {
   updatedAt: Date;
 }
 
+/** The agency's own authorization with a provider (Google Ads manager account). Privileged: the token is never returned. */
+export interface AgencyCredential {
+  id: string;
+  provider: string; // "google_ads"
+  encryptedRefreshToken: string;
+  connectedBy: string; // name of the admin who connected it
+  connectedAt: Date;
+}
+
 export interface AuditLog {
   id: string;
   organizationId: string;
