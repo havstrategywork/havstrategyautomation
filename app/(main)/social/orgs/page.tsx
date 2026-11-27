@@ -2,8 +2,10 @@ import { ObjectId } from "mongodb";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { bufferKey, listChannels, BufferError, type Channel } from "@/lib/buffer";
+import { listChannels, BufferError, type Channel } from "@/lib/buffer";
+import { keyFor } from "@/lib/bufferKeys";
 import { cfg, missingEnv } from "@/lib/meta";
+import { seal } from "@/lib/secrets";
 import { currentUser } from "@/lib/session";
 import { Avatar, Icon, ago } from "@/components/ui";
 import { Empty, SocialHead } from "@/components/social";
@@ -17,6 +19,12 @@ async function admin() {
 }
 const done = (msg: string) => redirect(`/social/orgs?m=${encodeURIComponent(msg)}`);
 const oid = (f: FormData) => { const v = String(f.get("id") ?? ""); return ObjectId.isValid(v) ? new ObjectId(v) : null; };
+const why = (e: unknown) => (e instanceof BufferError ? e.message : "Could not reach Buffer.");
+/** The channels a key can see, or why they can't be listed. */
+async function channelsOf(key: string): Promise<{ channels: Channel[]; error: string }> {
+  if (!key) return { channels: [], error: "No usable Buffer API key." };
+  try { return { channels: await listChannels(key), error: "" }; } catch (e) { return { channels: [], error: why(e) }; }
+}
 
 async function addOrg(f: FormData) {
   "use server";
@@ -45,8 +53,11 @@ async function linkChannel(f: FormData) {
   await admin();
   const id = oid(f), channelId = String(f.get("channel") ?? ""), { orgs } = await db();
   if (!id || !channelId) return done("Pick a channel to link.");
-  let ch: Channel | undefined;
-  try { ch = (await listChannels()).find((c) => c.id === channelId); } catch (e) { return done(e instanceof BufferError ? e.message : "Could not reach Buffer."); }
+  const org = await orgs.findOne({ _id: id });
+  if (!org) return done("No such organization.");
+  const seen = await channelsOf(keyFor(org));
+  if (seen.error) return done(seen.error);
+  const ch = seen.channels.find((c) => c.id === channelId);
   if (!ch) return done("Buffer does not list that channel.");
   if (await orgs.findOne({ "buffer.channelId": ch.id })) return done(`${ch.name} is already linked to an organization.`);
   await orgs.updateOne({ _id: id }, { $push: { buffer: { channelId: ch.id, organizationId: ch.organizationId, name: ch.displayName || ch.name, service: ch.service, ...(ch.avatar && { avatar: ch.avatar }) } } });
@@ -60,6 +71,31 @@ async function unlinkChannel(f: FormData) {
   if (!id) return done("No such organization.");
   await orgs.updateOne({ _id: id }, { $pull: { buffer: { channelId: String(f.get("channel") ?? "") } } });
   revalidatePath("/social/orgs"); done("Channel unlinked.");
+}
+
+// The key is checked against Buffer before it is saved, stored encrypted, and never shown again (messages travel in the address bar, so none include it).
+async function saveKey(f: FormData) {
+  "use server";
+  await admin();
+  const id = oid(f), key = String(f.get("key") ?? "").trim(), { orgs } = await db(), org = id ? await orgs.findOne({ _id: id }) : null;
+  if (!org) return done("No such organization.");
+  if (!/^[\x21-\x7e]{8,500}$/.test(key)) return done("Paste the Buffer API key (no spaces).");
+  const seen = await channelsOf(key);
+  if (seen.error) return done(`The key was not saved. ${seen.error}`);
+  const lost = (org.buffer ?? []).filter((b) => !seen.channels.some((c) => c.id === b.channelId));
+  if (lost.length) return done(`The key was not saved: it can't see ${lost.map((b) => b.name).join(", ")}. Unlink ${lost.length === 1 ? "that channel" : "those channels"} first.`);
+  await orgs.updateOne({ _id: org._id }, { $set: { bufferKey: seal(key) } });
+  revalidatePath("/social/orgs"); done(`Saved ${org.name}'s Buffer key. It can see ${seen.channels.length} channel${seen.channels.length === 1 ? "" : "s"}.`);
+}
+
+async function removeKey(f: FormData) {
+  "use server";
+  await admin();
+  const id = oid(f), { orgs } = await db(), org = id ? await orgs.findOne({ _id: id }) : null;
+  if (!org) return done("No such organization.");
+  if (org.buffer?.length) return done("Unlink this organization's channels first, then remove its key.");
+  await orgs.updateOne({ _id: org._id }, { $unset: { bufferKey: "" } });
+  revalidatePath("/social/orgs"); done(`Removed ${org.name}'s own key. It now uses the shared one.`);
 }
 
 async function disconnect(f: FormData) {
@@ -78,11 +114,12 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
   const { orgs, botConnections } = await db();
   const [list, conns] = await Promise.all([orgs.find().sort({ name: 1 }).toArray(), botConnections.find().sort({ username: 1 }).toArray()]);
   const missing = missingEnv(), app = cfg().app || "<APP_URL>";
-  let channels: Channel[] = [], bufferError = "";
-  if (!bufferKey()) bufferError = "BUFFER_API_KEY is not set in the environment. Create a key at publish.buffer.com/settings/api.";
-  else try { channels = await listChannels(); } catch (e) { bufferError = e instanceof BufferError ? e.message : "Could not reach Buffer."; }
+  // organizations without their own key share one listing; the shared key's problem is only worth a banner if somebody relies on it
+  const usesShared = !list.length || list.some((o) => !o.bufferKey);
+  const shared = usesShared ? await channelsOf(keyFor(null)) : { channels: [], error: "" };
+  const seen = new Map(await Promise.all(list.map(async (o) => [String(o._id), o.bufferKey ? await channelsOf(keyFor(o)) : shared] as const)));
+  const sharedError = usesShared && shared.error ? (keyFor(null) ? shared.error : "BUFFER_API_KEY is not set in the environment. Create a key at publish.buffer.com/settings/api, or give an organization its own key below.") : "";
   const taken = new Set(list.flatMap((o) => (o.buffer ?? []).map((b) => b.channelId)));
-  const free = channels.filter((c) => !taken.has(c.id) && !c.locked);
 
   return (
     <>
@@ -97,7 +134,7 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
         }
       />
       {m && <div className="notice" role="status">{m}</div>}
-      {bufferError && <div className="notice warn"><b>Buffer is not connected.</b> {bufferError}</div>}
+      {sharedError && <div className="notice warn"><b>The shared Buffer key is not working.</b> {sharedError}</div>}
       {missing.length > 0 && (
         <details className="notice warn setup">
           <summary><b>The Meta app (Chat bots only) is not set up yet.</b> Missing: {missing.join(", ")}. <span className="muted">Show setup steps</span></summary>
@@ -109,6 +146,7 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
         <div className="grid">
           {list.map((o) => {
             const mine = conns.filter((c) => String(c.orgId) === String(o._id)), linkedCh = o.buffer ?? [];
+            const { channels, error } = seen.get(String(o._id))!, free = channels.filter((c) => !taken.has(c.id) && !c.locked);
             return (
               <section key={String(o._id)} className="card org-admin">
                 <div className="org-admin-head">
@@ -137,6 +175,15 @@ export default async function Orgs({ searchParams }: { searchParams: Promise<{ m
                         <button className="small-btn">Link</button>
                       </form>
                     )}
+                    {o.bufferKey && error && <p className="small bad-txt">This organization&apos;s Buffer key has a problem: {error}</p>}
+                    <form action={saveKey} className="inline-form">
+                      <input type="hidden" name="id" value={String(o._id)} />
+                      <input type="password" name="key" required maxLength={500} autoComplete="new-password" placeholder={o.bufferKey ? "Paste a new key to replace it" : "Client's own Buffer API key (optional)"} aria-label={`Buffer API key for ${o.name}`} />
+                      <button className="ghost small-btn">Save key</button>
+                    </form>
+                    {o.bufferKey
+                      ? <form action={removeKey} className="inline-form"><input type="hidden" name="id" value={String(o._id)} /><small className="muted">Uses its own Buffer key (saved, encrypted).</small><button className="ghost small-btn danger-txt">Remove key</button></form>
+                      : <small className="muted">Uses the shared Buffer account.</small>}
                   </div>
 
                   <div className="panel">

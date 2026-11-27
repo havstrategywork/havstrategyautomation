@@ -115,5 +115,16 @@ const drafts = await listPosts("org1", ["c1"], "status: [draft]");
 assert.deepEqual(drafts.map((d) => [d.id, d.status, d.img, d.dueAt]), [["d1", "draft", "t.jpg", undefined]]);
 assert.deepEqual(await listPosts("org1", [], "status: [draft]"), []); // no channels = no call
 
+// an organization's own key is the one sent, even when the shared key is missing or wrong
+process.env.BUFFER_API_KEY = "";
+calls.length = 0;
+assert.equal(await mutate(createPostBody(ig), "GOOD"), "p9"); // first, because a write empties the cache: the reads below really call Buffer
+assert.equal((await listChannels("GOOD")).length, 2);
+assert.equal((await listPosts("org1", ["c1"], "status: [draft]", "GOOD")).length, 1);
+assert.ok((await buildReport({ channelId: "c1", organizationId: "org1" }, range, "2026-11-26", "GOOD")).totals.ok);
+assert.ok(calls.length >= 6 && calls.every((c) => c.auth === "Bearer GOOD"));
+await assert.rejects(() => listChannels("BAD"), /rejected the API key/); // cached answers are per key
+await assert.rejects(() => listChannels(""), /BUFFER_API_KEY is not set/);
+
 srv.close();
 console.log("buffer ok");

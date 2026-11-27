@@ -1,5 +1,6 @@
-// Buffer side of the social reports: Buffer's GraphQL API (https://api.buffer.com), one personal API key in BUFFER_API_KEY
-// (publish.buffer.com/settings/api). The key reaches every organization and channel in that Buffer account.
+// Buffer side of the social reports: Buffer's GraphQL API (https://api.buffer.com), a personal API key (publish.buffer.com/settings/api).
+// A key reaches every organization and channel in its Buffer account. The shared one is BUFFER_API_KEY; a client with their own Buffer account
+// gets their own key on the Organizations page (lib/bufferKeys.ts), which every function here takes as its last argument.
 // What Buffer exposes is PER POST metrics (reach, impressions, reactions, ...) plus one aggregate over a date range, refreshed about once a day.
 // There is no follower count or audience data, and Buffer calls the metrics API experimental and personal-key-only.
 // Env: BUFFER_API_KEY, optional BUFFER_API_BASE (tests point it at a local stub).
@@ -77,15 +78,14 @@ export const topBy = (items: Content[], key: string, n = 6) => [...items].sort((
 // ponytail: per-process memory (each serverless instance has its own); fine for a small team, move to Mongo/Redis if it ever matters.
 const TTL = 5 * 60e3, cache = new Map<string, { at: number; data: unknown }>();
 
-export async function gql<T>(query: string, ttl = TTL): Promise<T> {
-  const key = bufferKey();
+export async function gql<T>(query: string, ttl = TTL, key = bufferKey()): Promise<T> {
   if (!key) throw new BufferError("BUFFER_API_KEY is not set.");
   const ck = `${key}|${query}`, hit = ttl ? cache.get(ck) : undefined;
   if (hit && Date.now() - hit.at < ttl) return hit.data as T;
   let r: Response;
   try { r = await fetch(base(), { method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal: AbortSignal.timeout(20_000), cache: "no-store" }); }
   catch { throw new BufferError("Could not reach Buffer (timeout or network)."); }
-  if (r.status === 401) throw new BufferError("Buffer rejected the API key. Create a new one at publish.buffer.com/settings/api and update BUFFER_API_KEY.");
+  if (r.status === 401) throw new BufferError("Buffer rejected the API key. Create a new one at publish.buffer.com/settings/api and update it (the organization's own key on Organizations, or BUFFER_API_KEY).");
   if (r.status === 429) throw new BufferError(`Buffer's request limit is reached. Try again in ${r.headers.get("retry-after") ?? "a few"} seconds.`);
   const j = (await r.json().catch(() => ({}))) as { data?: T; errors?: { message?: string }[] };
   if (j.errors?.length) throw new BufferError(`Buffer: ${j.errors[0].message ?? "request failed"}`);
@@ -95,11 +95,11 @@ export async function gql<T>(query: string, ttl = TTL): Promise<T> {
 }
 const q = (s: string) => JSON.stringify(s); // GraphQL string literal; ids come from Buffer/our own database, never from a raw form field
 
-/** Every channel in the Buffer account, across all its organizations. */
-export async function listChannels(): Promise<Channel[]> {
-  const { account } = await gql<{ account: { organizations: { id: string }[] } }>(`{ account { organizations { id } } }`);
+/** Every channel in the key's Buffer account, across all its organizations. */
+export async function listChannels(key = bufferKey()): Promise<Channel[]> {
+  const { account } = await gql<{ account: { organizations: { id: string }[] } }>(`{ account { organizations { id } } }`, TTL, key);
   const per = await Promise.all(account.organizations.map(async (o) => {
-    const { channels } = await gql<{ channels: Json[] }>(`{ channels(input: { organizationId: ${q(o.id)} }) { id name displayName service avatar externalLink isDisconnected isLocked } }`);
+    const { channels } = await gql<{ channels: Json[] }>(`{ channels(input: { organizationId: ${q(o.id)} }) { id name displayName service avatar externalLink isDisconnected isLocked } }`, TTL, key);
     return channels.map((c): Channel => ({ id: String(c.id), organizationId: o.id, name: String(c.name ?? c.id), displayName: str(c.displayName), service: String(c.service ?? ""), avatar: str(c.avatar), externalLink: str(c.externalLink), disconnected: c.isDisconnected === true, locked: c.isLocked === true }));
   }));
   return per.flat();
@@ -116,9 +116,9 @@ const sec = async <T,>(f: () => Promise<T>): Promise<Sec<T>> => {
 };
 const span = (r: Range) => `startDateTime: ${q(`${r.from}T00:00:00Z`)} endDateTime: ${q(`${r.to}T23:59:59Z`)}`;
 
-export async function buildReport(l: Pick<Linked, "channelId" | "organizationId">, range: Range, today = todayIn()): Promise<Report> {
+export async function buildReport(l: Pick<Linked, "channelId" | "organizationId">, range: Range, today = todayIn(), key = bufferKey()): Promise<Report> {
   const prev = prevRange(range), prevOk = prev.from >= addDays(today, -729), org = q(l.organizationId), ch = `channelIds: [${q(l.channelId)}]`;
-  const agg = (r: Range) => gql<{ m: { metrics: unknown; metricsUpdatedAt?: string } }>(`{ m: aggregatedPostMetrics(input: { organizationId: ${org} ${span(r)} ${ch} }) { metrics { type value } metricsUpdatedAt } }`).then((d) => d.m);
+  const agg = (r: Range) => gql<{ m: { metrics: unknown; metricsUpdatedAt?: string } }>(`{ m: aggregatedPostMetrics(input: { organizationId: ${org} ${span(r)} ${ch} }) { metrics { type value } metricsUpdatedAt } }`, TTL, key).then((d) => d.m);
   const [totals, posts] = await Promise.all([
     sec(async () => {
       // two separate calls: a plan only keeps so much history (Free: 31 days), and the comparison period failing must not take the current numbers down with it
@@ -129,7 +129,7 @@ export async function buildReport(l: Pick<Linked, "channelId" | "organizationId"
       const out: Content[] = [];
       let after = "";
       for (let page = 0; page < 4; page++) { // newest first; 4 pages x 50 = the 200 most recent posts of the period
-        const d = await gql<{ posts: { edges?: { node: Json }[]; pageInfo: { endCursor?: string; hasNextPage: boolean } } }>(`{ posts(first: 50 ${after && `after: ${q(after)}`} input: { organizationId: ${org} filter: { ${ch} status: [sent] startDate: ${q(`${range.from}T00:00:00Z`)} endDate: ${q(`${range.to}T23:59:59Z`)} } sort: [{ field: dueAt direction: desc }] }) { edges { node { id text sentAt dueAt externalLink assets { thumbnail } metrics { type value } } } pageInfo { endCursor hasNextPage } } }`);
+        const d = await gql<{ posts: { edges?: { node: Json }[]; pageInfo: { endCursor?: string; hasNextPage: boolean } } }>(`{ posts(first: 50 ${after && `after: ${q(after)}`} input: { organizationId: ${org} filter: { ${ch} status: [sent] startDate: ${q(`${range.from}T00:00:00Z`)} endDate: ${q(`${range.to}T23:59:59Z`)} } sort: [{ field: dueAt direction: desc }] }) { edges { node { id text sentAt dueAt externalLink assets { thumbnail } metrics { type value } } } pageInfo { endCursor hasNextPage } } }`, TTL, key);
         out.push(...(d.posts.edges ?? []).map((e) => normalizePost(e.node)));
         if (!d.posts.pageInfo.hasNextPage || !d.posts.pageInfo.endCursor) break;
         after = d.posts.pageInfo.endCursor;
@@ -173,12 +173,12 @@ export function normalizePlanned(p: Json): Planned {
 }
 
 /** Posts of some channels, matching a raw GraphQL `filter` body (e.g. `status: [draft]`), up to 250. Cached 1 minute; every write below empties the cache. */
-export async function listPosts(organizationId: string, channelIds: string[], filter: string): Promise<Planned[]> {
+export async function listPosts(organizationId: string, channelIds: string[], filter: string, key = bufferKey()): Promise<Planned[]> {
   if (!channelIds.length) return [];
   const out: Planned[] = [];
   let after = "";
   for (let page = 0; page < 5; page++) {
-    const d = await gql<{ posts: { edges?: { node: Json }[]; pageInfo: { endCursor?: string; hasNextPage: boolean } } }>(`{ posts(first: 50 ${after && `after: ${q(after)}`} input: { organizationId: ${q(organizationId)} filter: { channelIds: [${channelIds.map(q).join(",")}] ${filter} } sort: [{ field: dueAt direction: asc }] }) { edges { node { id channelId status text dueAt createdAt externalLink assets { thumbnail } error { message } } } pageInfo { endCursor hasNextPage } } }`, 60e3);
+    const d = await gql<{ posts: { edges?: { node: Json }[]; pageInfo: { endCursor?: string; hasNextPage: boolean } } }>(`{ posts(first: 50 ${after && `after: ${q(after)}`} input: { organizationId: ${q(organizationId)} filter: { channelIds: [${channelIds.map(q).join(",")}] ${filter} } sort: [{ field: dueAt direction: asc }] }) { edges { node { id channelId status text dueAt createdAt externalLink assets { thumbnail } error { message } } } pageInfo { endCursor hasNextPage } } }`, 60e3, key);
     out.push(...(d.posts.edges ?? []).map((e) => normalizePlanned(e.node)));
     if (!d.posts.pageInfo.hasNextPage || !d.posts.pageInfo.endCursor) break;
     after = d.posts.pageInfo.endCursor;
@@ -186,8 +186,8 @@ export async function listPosts(organizationId: string, channelIds: string[], fi
   return out;
 }
 /** One post's channel and status (used to check a post belongs to a channel we link before changing it). */
-export async function getPost(id: string): Promise<Planned> {
-  return normalizePlanned((await gql<{ post: Json }>(`{ post(input: { id: ${q(id)} }) { id channelId status text dueAt } }`, 0)).post);
+export async function getPost(id: string, key = bufferKey()): Promise<Planned> {
+  return normalizePlanned((await gql<{ post: Json }>(`{ post(input: { id: ${q(id)} }) { id channelId status text dueAt } }`, 0, key)).post);
 }
 
 export type NewPost = { channelId: string; service: string; text: string; mode: "schedule" | "queue" | "draft"; dueAt?: string; mediaUrl?: string; mediaKind?: "image" | "video"; igType?: "post" | "reel" | "story"; notify?: boolean };
@@ -214,8 +214,8 @@ export const rescheduleBody = (id: string, dueAt: string) => `editPost(input: { 
 export const deleteBody = (id: string) => `deletePost(input: { id: ${q(id)} }) { ... on DeletePostSuccess { id } ... on MutationError { message } }`;
 
 /** Runs one mutation (never cached; the cache is emptied so the lists show the change) and turns Buffer's error members into a thrown message. */
-export async function mutate(body: string): Promise<string | undefined> {
-  const d = await gql<Record<string, Json>>(`mutation { ${body} }`, 0);
+export async function mutate(body: string, key = bufferKey()): Promise<string | undefined> {
+  const d = await gql<Record<string, Json>>(`mutation { ${body} }`, 0, key);
   cache.clear();
   const r = obj(Object.values(d)[0]);
   if (typeof r.message === "string") throw new BufferError(`Buffer: ${r.message}`);
