@@ -1,14 +1,14 @@
-import { createHash } from "node:crypto";
 import { after } from "next/server";
-import { db } from "@/lib/db";
+import { clientIpFromHeaders, rateLimit } from "@/lib/access/rate-limit";
 import { notify } from "@/lib/notify";
 import { asked, validate } from "@/lib/onboarding";
 import { getForm } from "@/lib/onboardingForm";
-import { pushToSheet } from "@/lib/onboardingSheet";
+import { saveToSheet } from "@/lib/onboardingSheet";
 import { pushToNotion } from "@/lib/notionBrief";
 
 // PUBLIC endpoint (the onboarding page posts here; no login, no Bearer key). So it is defensive: size cap, honeypot, per-IP limit, strict validation.
-// Answers are stored in MongoDB first; the Google Sheet copy, the Notion brief and the notification run after the response.
+// The Google Sheet is the only record: the row is added BEFORE we answer, and a failure is shown to the client (their answers stay in their browser).
+// The Notion brief and the notification run after the response.
 const MAX_BYTES = 200_000, PER_HOUR = 5;
 
 export async function POST(req: Request) {
@@ -26,17 +26,19 @@ export async function POST(req: Request) {
     return Response.json({ error: v.error }, { status: 422 });
   }
 
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
-  const ipHash = createHash("sha256").update(`${process.env.API_KEY ?? ""}|${ip}`).digest("hex").slice(0, 24); // not stored in clear
-  const { onboarding } = await db();
-  if (await onboarding.countDocuments({ ipHash, at: { $gte: new Date(Date.now() - 3600e3) } }) >= PER_HOUR)
+  // ponytail: in-memory per-instance limit (lib/access/rate-limit.ts); swap for a shared store if abuse shows up across instances
+  if (!rateLimit(`onboarding:${clientIpFromHeaders(req.headers)}`, PER_HOUR, 3600e3).allowed)
     return Response.json({ error: "Too many submissions from this connection. Please try again in an hour." }, { status: 429 });
 
-  const at = new Date();
-  const { insertedId } = await onboarding.insertOne({ at, services: v.services, answers: v.answers, questions: asked(form.steps, v.services), formVersion: form.version, ipHash });
+  const sub = { at: new Date(), services: v.services, answers: v.answers, questions: asked(form.steps, v.services) };
+  try { await saveToSheet(sub); }
+  catch (e) {
+    console.error("onboarding: could not save to the Google Sheet:", (e as Error).message);
+    await notify("Onboarding NOT saved", `${v.answers.company} (${v.answers.email}) tried to submit but the Google Sheet failed: ${(e as Error).message}`);
+    return Response.json({ error: "We couldn't save your answers just now. Please try again in a few minutes - your answers are still in this browser." }, { status: 503 });
+  }
   after(async () => {
-    await pushToSheet(insertedId);
-    await pushToNotion(insertedId);
+    await pushToNotion(sub);
     await notify(`New onboarding: ${v.answers.company}`, `${v.answers.name} (${v.answers.email}) · ${v.services.join(", ")}`);
   });
   return Response.json({ ok: true });

@@ -210,13 +210,34 @@ th {
   text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600;
   padding: .8rem 1rem; background: var(--surface-2); border-bottom: 1px solid var(--border); white-space: nowrap; position: sticky; top: 0;
 }
-td { padding: .85rem 1rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+td { padding: .85rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
 tbody tr { transition: background-color .12s ease; }
 tbody tr:hover td { background: color-mix(in srgb, var(--accent-weak) 45%, transparent); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .two { line-height: 1.35; }
 .two small { display: block; color: var(--muted); font-size: 12px; }
+
+.link-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 550; color: var(--accent); cursor: pointer; }
+.link-btn:hover { text-decoration: underline; }
+
+/* no backdrop-filter / transitions here: blurring a wide table behind the modal is what made it lag */
+.events-modal {
+  margin: auto; padding: 0; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); width: min(520px, calc(100vw - 2rem)); max-height: 75vh; overflow: hidden;
+}
+.events-modal[open] { display: flex; flex-direction: column; }
+.events-modal::backdrop { background: rgb(8 8 12 / .5); }
+.events-modal header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; border-bottom: 1px solid var(--border); }
+.events-modal header h3 { margin: 0 0 .1rem; font-size: 16px; }
+.events-modal ul { list-style: none; margin: 0; padding: .5rem 1.2rem 1rem; overflow-y: auto; }
+.events-modal li { display: grid; grid-template-columns: 3.2rem 1fr; gap: .6rem; padding: .55rem 0 .55rem .8rem; border-left: 3px solid var(--border); font-size: 13.5px; line-height: 1.45; margin-top: .35rem; }
+.events-modal li time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.events-modal li span { overflow-wrap: anywhere; }
+.events-modal li.bad { border-left-color: var(--bad); }
+.events-modal li.warn { border-left-color: var(--warn); }
+.events-modal li.good { border-left-color: var(--good); }
+.events-modal li.info { border-left-color: var(--info); }
 
 /* ---------- pagination ---------- */
 .pagination {

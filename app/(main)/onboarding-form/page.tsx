@@ -16,7 +16,6 @@ export default async function OnboardingFormPage() {
     <>
       <PageHead title="Form editor" sub={<>The questions clients answer on the <Link href="/onboarding" target="_blank">onboarding form</Link>. Changes go live when you save. {updatedAt ? `Last saved ${ago(updatedAt)} by ${by}.` : "Still the original questions."}</>}>
         <a className="btn ghost" href="/onboarding" target="_blank" rel="noopener noreferrer">Open the form</a>
-        <Link className="btn ghost" href="/onboarding-responses">See answers</Link>
       </PageHead>
       <OnboardingEditor initial={steps} initialVersion={version} />
     </>

@@ -9,7 +9,7 @@ export type NavGroup = { group: string; items: NavItem[] };
 
 export const MAIN_NAV: NavGroup[] = [
   { group: "Overview", items: [{ href: "/", label: "Dashboard", icon: "grid" }, { href: "/campaigns", label: "Campaigns", icon: "layers" }, { href: "/inbox", label: "Inbox", icon: "inbox" }, { href: "/report", label: "Daily report", icon: "pulse" }] },
-  { group: "Data", items: [{ href: "/creators", label: "Creators", icon: "users" }, { href: "/clients", label: "Clients", icon: "briefcase" }, { href: "/outreach", label: "Outreach", icon: "send" }, { href: "/onboarding-responses", label: "Onboarding", icon: "inbox" }, { href: "/onboarding-form", label: "Form editor", icon: "settings" }] },
+  { group: "Data", items: [{ href: "/creators", label: "Creators", icon: "users" }, { href: "/clients", label: "Clients", icon: "briefcase" }, { href: "/outreach", label: "Outreach", icon: "send" }, { href: "/onboarding-form", label: "Form editor", icon: "settings" }] },
   { group: "Social", items: [{ href: "/social", label: "Overview", icon: "grid" }, { href: "/social/reports", label: "Reports", icon: "chart" }, { href: "/social/planner", label: "Planner", icon: "send" }, { href: "/social/bots", label: "Chat bots", icon: "chat" }, { href: "/social/orgs", label: "Organizations", icon: "layers" }] },
   { group: "Email", items: [{ href: "/mail", label: "Email agent", icon: "mail" }] },
   { group: "System", items: [{ href: "/automation", label: "Automation", icon: "bolt" }, { href: "/users", label: "Users", icon: "users" }, { href: "/settings", label: "Settings", icon: "settings" }] },

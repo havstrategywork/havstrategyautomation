@@ -1,9 +1,8 @@
-// Copies one saved onboarding submission to the agency's Google Sheet, and records whether it worked on the submission itself. MongoDB stays the record.
+// Appends one onboarding submission to the agency's Google Sheet. The sheet is the ONLY place answers are stored (nothing goes in MongoDB).
 // WHERE it goes is set on the dashboard's Settings page (saved in the `settings` collection). ONBOARDING_SHEET_ID / ONBOARDING_SHEET_TAB still work as a fallback.
 // The service account key (GOOGLE_SA_JSON) stays in the environment: it is a secret, so it is never stored in the database or shown on a page.
-import type { ObjectId } from "mongodb";
 import { db } from "./db";
-import { sheetHeader, sheetPairs } from "./onboarding";
+import { sheetHeader, sheetPairs, type Submission } from "./onboarding";
 import { getForm } from "./onboardingForm";
 import { appendByTitle } from "./sheet";
 
@@ -17,28 +16,10 @@ export async function sheetTarget() {
   return { id, tab: s?.tab || process.env.ONBOARDING_SHEET_TAB || "Onboarding", url: s?.sheetUrl ?? `https://docs.google.com/spreadsheets/d/${id}/edit` };
 }
 
-/** Never throws: a Google outage must not lose or fail a submission (it is already in our database; the Onboarding page can push it again). */
-export async function pushToSheet(id: ObjectId) {
+/** Throws when there is no sheet or Google refuses: the caller must tell the client, because nothing else keeps their answers. */
+export async function saveToSheet(sub: Submission) {
   const target = await sheetTarget();
-  if (!target) return;
-  const { onboarding } = await db();
-  const doc = await onboarding.findOne({ _id: id, "sheet.ok": { $ne: true } }); // never push a row twice
-  if (!doc) return;
-  let sheet: { ok: boolean; at: Date; error?: string };
-  try {
-    const { steps } = await getForm();
-    await appendByTitle(target.id, target.tab, sheetHeader(steps), sheetPairs(doc, steps));
-    sheet = { ok: true, at: new Date() };
-  } catch (e) {
-    sheet = { ok: false, at: new Date(), error: (e as Error).message.slice(0, 300) };
-  }
-  await onboarding.updateOne({ _id: id }, { $set: { sheet } });
-}
-
-/** Pushes every submission that is not in the sheet yet, oldest first. Returns how many were tried. */
-export async function pushUnsent() {
-  const { onboarding } = await db();
-  const ids = await onboarding.find({ "sheet.ok": { $ne: true } }).sort({ at: 1 }).limit(200).project<{ _id: ObjectId }>({ _id: 1 }).toArray();
-  for (const d of ids) await pushToSheet(d._id);
-  return ids.length;
+  if (!target) throw new Error("no sheet connected");
+  const { steps } = await getForm();
+  await appendByTitle(target.id, target.tab, sheetHeader(steps), sheetPairs(sub, steps));
 }

@@ -2,7 +2,7 @@ import { unauthorized } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MAILBOXES, MAIL_STATUSES, threadKey, type MailStatus } from "@/lib/mail";
 
-// The email agent reports here (Bearer API_KEY), once at the end of a run. It never touches the Instagram run lock or pause switch.
+// The email agent reports here (Bearer API_KEY), after every batch of threads and once more at the end of a run (the final one carries `run`). It never touches the Instagram run lock or pause switch.
 // POST { threads: [{ mailbox, email, subject, status, name?, category?, price?, note?, url?, followUpSent? }], run?: { ok, note } }
 //   Upserts by mailbox + sender email + subject; only the fields you send change. followUpSent:true adds 1 to the thread's follow-up count.
 export async function POST(req: Request) {

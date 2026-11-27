@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHead } from "@/components/ui";
+import DayEvents from "@/components/DayEvents";
 
 export const dynamic = "force-dynamic";
 
@@ -125,7 +126,7 @@ export default async function Report({ searchParams }: { searchParams: Promise<R
                   <td style={{ whiteSpace: "nowrap" }}><b>{i === 0 ? "Today" : label(k)}</b>{i === 0 && <div className="small muted">{label(k)}</div>}</td>
                   {COLS.map(([c]) => <td key={c} className={d[c] ? "" : "muted"}>{d[c] as number}</td>)}
                   <td className={d.runsBad ? "" : "muted"}>{d.runsOk}{d.runsBad ? <span style={{ color: "var(--bad)" }}> / {d.runsBad} failed</span> : ""}</td>
-                  <td>{d.log.length ? <details><summary className="small">{d.log.length} events</summary><ul className="small" style={{ margin: ".4rem 0 0", paddingLeft: "1.1rem", minWidth: 260 }}>{d.log.map((l, j) => <li key={j}>{l}</li>)}</ul></details> : <span className="muted small">—</span>}</td>
+                  <td><DayEvents day={i === 0 ? `Today · ${label(k)}` : label(k)} log={d.log} /></td>
                 </tr>
               );
             })}

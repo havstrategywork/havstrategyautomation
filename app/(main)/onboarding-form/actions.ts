@@ -12,6 +12,6 @@ export async function saveOnboardingForm(stepsJson: string, baseVersion: number)
   let steps: unknown;
   try { steps = JSON.parse(stepsJson); } catch { return { ok: false as const, error: "Could not read the form. Reload the page and try again." }; }
   const result = await saveForm(steps, Number.isInteger(baseVersion) && baseVersion >= 0 ? baseVersion : -1, me.username);
-  if (result.ok) { revalidatePath("/onboarding-form"); revalidatePath("/onboarding-responses"); }
+  if (result.ok) { revalidatePath("/onboarding-form"); }
   return result;
 }

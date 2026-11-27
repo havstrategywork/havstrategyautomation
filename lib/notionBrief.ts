@@ -1,11 +1,10 @@
 // Posts a condensed "brief" page to Notion for each onboarding submission: just the handful of answers a strategist needs
-// before kickoff, not the full 50+ question dump (that lives on the Onboarding admin page). Where it
+// before kickoff, not the full 50+ question dump (that lives in the Google Sheet). Where it
 // goes is set on the dashboard's Settings page (saved in the `settings` collection, _id "onboardingNotion"). NOTION_PARENT_PAGE_ID
 // is a fallback.
-import type { ObjectId } from "mongodb";
 // Explicit .ts extensions here (unlike the rest of this codebase) so this file's pure logic (briefBlocks/briefTitle) can be
 // run and tested directly with plain `node`, which — unlike Next's bundler — won't resolve a bare specifier like "./db".
-import { db, type Onboarding } from "./db.ts";
+import { db } from "./db.ts";
 import { SERVICES, type ServiceId } from "./onboarding.ts";
 import { bullet, type Block, callout, createBriefPage, divider, h2, p as para } from "./notion.ts";
 
@@ -31,7 +30,7 @@ function row(a: Record<string, string>, label: string, id: string, kind: "bullet
 }
 
 /** The condensed brief's blocks: contact, chosen services, a short business/brand/customer snapshot, one goal line per
- *  service, and budget if given. Deliberately NOT every question — the Onboarding admin page has those. */
+ *  service, and budget if given. Deliberately NOT every question — the Google Sheet has those. */
 export function briefBlocks(services: ServiceId[], a: Record<string, string>): Block[] {
   const blocks: Block[] = [
     h2("Contact"),
@@ -48,34 +47,18 @@ export function briefBlocks(services: ServiceId[], a: Record<string, string>): B
   if (goals.length) blocks.push(h2("What they want from each service"), ...goals);
   const budget = g(a, "budget") || g(a, "crBudget");
   if (budget) blocks.push(h2("Budget"), para(budget));
-  blocks.push(divider(), callout("Every answer, including files, is on the Onboarding page of the dashboard."));
+  blocks.push(divider(), callout("Every answer, including files, is in the onboarding Google Sheet."));
   return blocks;
 }
 
 export const briefTitle = (a: Record<string, string>, at: Date) => `${a.company || a.name || "New client"} — ${at.toISOString().slice(0, 10)}`;
 
-/** Never throws: a Notion outage must not lose or fail a submission (it's already saved;
- *  Settings / the retry button on Onboarding can push it again). */
-export async function pushToNotion(id: ObjectId) {
-  const target = await briefTarget();
-  if (!target) return;
-  const { onboarding } = await db();
-  const doc = await onboarding.findOne({ _id: id, "notion.ok": { $ne: true } }); // never push a page twice
-  if (!doc) return;
-  let notion: Onboarding["notion"];
+/** Never throws: a Notion outage must not fail a submission (the answers are already in the Google Sheet). No retry: a missed brief is rebuilt from the sheet row by hand. */
+export async function pushToNotion(sub: { at: Date; services: string[]; answers: Record<string, string> }) {
   try {
-    const page = await createBriefPage(target.id, briefTitle(doc.answers, doc.at), briefBlocks(doc.services as ServiceId[], doc.answers));
-    notion = { ok: true, at: new Date(), url: page.url };
+    const target = await briefTarget();
+    if (target) await createBriefPage(target.id, briefTitle(sub.answers, sub.at), briefBlocks(sub.services as ServiceId[], sub.answers));
   } catch (e) {
-    notion = { ok: false, at: new Date(), error: (e as Error).message.slice(0, 300) };
+    console.error("onboarding: Notion brief failed:", (e as Error).message);
   }
-  await onboarding.updateOne({ _id: id }, { $set: { notion } });
-}
-
-/** Pushes every submission that doesn't have a brief yet, oldest first. Returns how many were tried. */
-export async function pushUnsentNotion() {
-  const { onboarding } = await db();
-  const ids = await onboarding.find({ "notion.ok": { $ne: true } }).sort({ at: 1 }).limit(200).project<{ _id: ObjectId }>({ _id: 1 }).toArray();
-  for (const d of ids) await pushToNotion(d._id);
-  return ids.length;
 }
