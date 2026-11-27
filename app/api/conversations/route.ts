@@ -1,7 +1,7 @@
 import { unauthorized } from "@/lib/auth";
 import { db, igAllowed } from "@/lib/db";
 import { PRIORITIES } from "@/lib/priority";
-import { clientFor, creatorRank, priorityRanks, threads } from "@/lib/threads";
+import { clientsFor, creatorRank, priorityRanks, threads } from "@/lib/threads";
 
 /**
  * ?view=watch   which creators' chats Claude should read this run (each has an igUrl: open the profile and click Message, never search the inbox). It must ignore every other thread.
@@ -22,23 +22,25 @@ export async function GET(req: Request) {
     const rows = (await creators.find({ igHandle: { $exists: true }, $or: [{ dmSentAt: { $exists: true } }, { status: { $in: ["DM Sent", "Replied", "Negotiating"] } }], status: { $nin: ["Declined", "Agreed"] }, needsHuman: { $exists: false }, undeliverable: { $exists: false } }).toArray())
       .sort((a, b) => +live(b.status) - +live(a.status) || creatorRank(a, ranks) - creatorRank(b, ranks) || +(a.watchedAt ?? a.dmSentAt ?? 0) - +(b.watchedAt ?? b.dmSentAt ?? 0)); // live chats first, then high-priority campaigns
     const { messages } = await db();
-    const out = [];
-    for (const c of rows.filter((c) => igAllowed(c.igHandle))) {
-      if (out.length >= limit) break;
-      await creators.updateOne({ _id: c._id }, { $set: { watchedAt: new Date() } });
-      const last = await messages.find({ creatorId: c._id! }).sort({ at: -1 }).limit(1).next();
+    const batch = rows.filter((c) => igAllowed(c.igHandle)).slice(0, Math.max(0, Math.ceil(limit))), now = Date.now();
+    const out = await Promise.all(batch.map(async (c, i) => {
+      const [, last] = await Promise.all([
+        creators.updateOne({ _id: c._id }, { $set: { watchedAt: new Date(now + i) } }), // +i keeps the order they were handed out, which the rotation sorts by
+        messages.find({ creatorId: c._id! }).sort({ at: -1 }).limit(1).next(),
+      ]);
       // lastLogged = the newest message already in our log. Post only messages that come AFTER it in the Instagram thread.
-      out.push({ creatorId: c._id, igHandle: c.igHandle, igUrl: `https://www.instagram.com/${c.igHandle}/`, status: c.status ?? "New", escalated: !!c.needsHuman, lastLogged: last && { from: last.direction === "in" ? "creator" : last.by === "human" ? "human" : "claude", text: last.text } });
-    }
+      return { creatorId: c._id, igHandle: c.igHandle, igUrl: `https://www.instagram.com/${c.igHandle}/`, status: c.status ?? "New", escalated: !!c.needsHuman, lastLogged: last && { from: last.direction === "in" ? "creator" : last.by === "human" ? "human" : "claude", text: last.text } };
+    }));
     return Response.json(out);
   }
 
   const out: (Record<string, unknown> & { rank: number })[] = [];
   const ranks = await priorityRanks();
-  for (const { creator: c, last, thread } of await threads()) {
-    // a thread with human guidance is pending even if our last message was a queued reply that got cancelled by the escalation
-    if ((last.direction !== "in" && !c.guidance) || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle)) continue;
-    const cl = await clientFor(c);
+  // a thread with human guidance is pending even if our last message was a queued reply that got cancelled by the escalation
+  const pending = (await threads()).filter(({ creator: c, last }) => !((last.direction !== "in" && !c.guidance) || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle)));
+  const clientOf = await clientsFor(pending.map((t) => t.creator));
+  for (const { creator: c, thread } of pending) {
+    const cl = clientOf(c);
     const rank = creatorRank(c, ranks);
     out.push({
       rank, priority: PRIORITIES[rank],

@@ -30,6 +30,12 @@ export async function clientFor(c: Creator) {
   const last = c.suggestedVia?.at(-1);
   return last ? (await db()).clients.findOne({ _id: last }) : null;
 }
+/** clientFor for many creators with a single query. */
+export async function clientsFor(cs: Creator[]) {
+  const ids = cs.flatMap((c) => c.suggestedVia?.at(-1) ?? []);
+  const found = new Map((ids.length ? await (await db()).clients.find({ _id: { $in: ids } }).toArray() : []).map((x) => [String(x._id), x]));
+  return (c: Creator) => found.get(String(c.suggestedVia?.at(-1))) ?? null;
+}
 
 /** clientId -> priority rank (0 high, 1 normal, 2 low) for every client, read once so a route can sort many rows without a query each. */
 export async function priorityRanks() {

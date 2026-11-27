@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { currentUser } from "@/lib/session";
 import { hubRoleOf } from "@/lib/roles";
 import { getDb } from "@/lib/access/db";
@@ -21,7 +22,7 @@ export interface AuthContext {
 }
 
 /** The signed-in dashboard user as a Hub context, or null when nobody is signed in, the login has no Hub access, or MongoDB is unreachable. */
-export async function getCurrentSession(): Promise<AuthContext | null> {
+export const getCurrentSession = cache(async (): Promise<AuthContext | null> => { // cache(): once per render, never across requests
   const u = await currentUser();
   if (!u) return null;
   const role = hubRoleOf(u.role);
@@ -39,4 +40,4 @@ export async function getCurrentSession(): Promise<AuthContext | null> {
     organizationName: org.organizationName,
     role,
   };
-}
+});

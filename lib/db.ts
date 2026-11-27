@@ -1,4 +1,4 @@
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient, ObjectId, type CreateIndexesOptions, type IndexSpecification } from "mongodb";
 import type { Role } from "./roles";
 import type { MailStatus } from "./mail";
 import type { BotEdge, BotNode, Vars } from "./botflow";
@@ -157,26 +157,29 @@ const connect = () =>
 
 // Unique handle/email, but only for real strings: a null/blank value (cleared field) must not collide.
 // Drops the first-version sparse indexes (igHandle_1/email_1) if they still exist.
+// The first request after a cold start waits for this, so the collections are set up side by side; within one collection the order is kept.
 async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
-  const c = d.collection("creators");
-  for (const f of ["igHandle", "email"]) {
-    await c.dropIndex(`${f}_1`).catch(() => {});
-    await c.createIndex({ [f]: 1 }, { unique: true, name: `${f}_uniq`, partialFilterExpression: { [f]: { $type: "string" } } });
-  }
-  await d.collection("users").createIndex({ username: 1 }, { unique: true });
-  await d.collection("users").createIndex({ email: 1 }, { unique: true, partialFilterExpression: { email: { $type: "string" } } });
-  await d.collection("sessions").createIndex({ tokenHash: 1 }, { unique: true });
-  await d.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // expired sessions delete themselves
-  await d.collection("loginAttempts").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 });
-  await d.collection("briefs").createIndex({ status: 1, createdAt: 1 });
-  await d.collection("mailThreads").createIndex({ key: 1 }, { unique: true });
-  await d.collection("mailThreads").createIndex({ status: 1, updatedAt: -1 });
-  await d.collection("botConnections").createIndex({ igId: 1 }, { unique: true });
-  await d.collection("botFlows").createIndex({ igId: 1, createdAt: 1 });
-  await d.collection("botSessions").createIndex({ at: 1 }, { expireAfterSeconds: 24 * 3600 });
-  await d.collection("botSeen").createIndex({ at: 1 }, { expireAfterSeconds: 2 * 24 * 3600 });
-  await d.collection("onboardingHits").createIndex({ at: 1 }, { expireAfterSeconds: 3600 });
-  await d.collection("onboardingHits").createIndex({ ipHash: 1, at: 1 });
+  const make = async (name: string, ...indexes: [IndexSpecification, CreateIndexesOptions?][]) => { for (const [keys, options] of indexes) await d.collection(name).createIndex(keys, options); };
+  const creators = async () => {
+    const c = d.collection("creators");
+    for (const f of ["igHandle", "email"]) {
+      await c.dropIndex(`${f}_1`).catch(() => {});
+      await c.createIndex({ [f]: 1 }, { unique: true, name: `${f}_uniq`, partialFilterExpression: { [f]: { $type: "string" } } });
+    }
+  };
+  await Promise.all([
+    creators(),
+    make("users", [{ username: 1 }, { unique: true }], [{ email: 1 }, { unique: true, partialFilterExpression: { email: { $type: "string" } } }]),
+    make("sessions", [{ tokenHash: 1 }, { unique: true }], [{ expiresAt: 1 }, { expireAfterSeconds: 0 }]), // expired sessions delete themselves
+    make("loginAttempts", [{ resetAt: 1 }, { expireAfterSeconds: 0 }]),
+    make("briefs", [{ status: 1, createdAt: 1 }]),
+    make("mailThreads", [{ key: 1 }, { unique: true }], [{ status: 1, updatedAt: -1 }]),
+    make("botConnections", [{ igId: 1 }, { unique: true }]),
+    make("botFlows", [{ igId: 1, createdAt: 1 }]),
+    make("botSessions", [{ at: 1 }, { expireAfterSeconds: 24 * 3600 }]),
+    make("botSeen", [{ at: 1 }, { expireAfterSeconds: 2 * 24 * 3600 }]),
+    make("onboardingHits", [{ at: 1 }, { expireAfterSeconds: 3600 }], [{ ipHash: 1, at: 1 }]),
+  ]);
 }
 
 export async function db() {
