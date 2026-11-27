@@ -21,9 +21,9 @@ async function testNotify() {
 export default async function Automation() {
   const url = (process.env.APP_URL ?? "").replace(/\/+$/, "");
   const key = process.env.API_KEY ?? "";
-  const ctl = await controlState();
   const { briefs, outreach } = await db();
-  const [awaiting, newBriefs, queued, sent] = await Promise.all([
+  const [ctl, awaiting, newBriefs, queued, sent] = await Promise.all([
+    controlState(),
     briefs.countDocuments({ status: "awaiting_approval" }), briefs.countDocuments({ status: "new" }),
     outreach.countDocuments({ channel: "ig", status: "queued" }), sentToday("ig"),
   ]);

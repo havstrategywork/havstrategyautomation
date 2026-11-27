@@ -28,7 +28,10 @@ const compact = (n: number) => (n >= 1e9 ? "no limit" : n >= 1e6 ? `${n / 1e6}M`
 export default async function Clients({ searchParams }: { searchParams?: Promise<Record<string, string>> }) {
   const sp = (await searchParams) ?? {};
   const { clients, creators } = await db();
-  const list = await clients.find().sort({ _id: -1 }).toArray();
+  const [list, perClient] = await Promise.all([
+    clients.find().sort({ _id: -1 }).toArray(),
+    creators.aggregate<{ _id: unknown; n: number }>([{ $unwind: "$suggestedVia" }, { $group: { _id: "$suggestedVia", n: { $sum: 1 } } }]).toArray(),
+  ]);
 
   const PAGE_SIZE = 15;
   const total = list.length;
@@ -36,7 +39,7 @@ export default async function Clients({ searchParams }: { searchParams?: Promise
   const currentPage = Math.min(Math.max(1, Number(sp.page) || 1), totalPages);
   const pagedList = list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
-  const counts = new Map((await creators.aggregate<{ _id: unknown; n: number }>([{ $unwind: "$suggestedVia" }, { $group: { _id: "$suggestedVia", n: { $sum: 1 } } }]).toArray()).map((r) => [String(r._id), r.n]));
+  const counts = new Map(perClient.map((r) => [String(r._id), r.n]));
 
   return (
     <>

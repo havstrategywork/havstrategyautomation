@@ -15,9 +15,15 @@ import { DEFAULT_DEADLINE, DEFAULT_GUIDELINES, DEFAULT_SCRIPT } from "./emailtem
 export async function readyDeals() {
   const { creators, outreach } = await db();
   const out = new Map<string, Creator[]>();
-  for (const c of await creators.find({ status: "Agreed", agreedRate: { $exists: true }, batchId: { $exists: false } }).limit(500).toArray()) {
-    const first = c.dealClientId ? null : await outreach.findOne({ creatorId: c._id, clientId: { $exists: true }, kind: { $ne: "followup" } }, { sort: { createdAt: 1 } });
-    const cid = c.dealClientId ?? first?.clientId ?? c.suggestedVia?.[0];
+  const agreed = await creators.find({ status: "Agreed", agreedRate: { $exists: true }, batchId: { $exists: false } }).limit(500).toArray();
+  // one query for everybody without a saved deal client: their earliest DM names the client
+  const unknown = agreed.filter((c) => !c.dealClientId).map((c) => c._id!), firstClient = new Map<string, ObjectId | undefined>();
+  if (unknown.length) {
+    const dms = await outreach.find({ creatorId: { $in: unknown }, clientId: { $exists: true }, kind: { $ne: "followup" } }).sort({ createdAt: 1 }).project<{ creatorId: ObjectId; clientId?: ObjectId }>({ creatorId: 1, clientId: 1 }).toArray();
+    for (const o of dms) if (!firstClient.has(String(o.creatorId))) firstClient.set(String(o.creatorId), o.clientId);
+  }
+  for (const c of agreed) {
+    const cid = c.dealClientId ?? firstClient.get(String(c._id)) ?? c.suggestedVia?.[0];
     if (cid) out.set(String(cid), [...(out.get(String(cid)) ?? []), c]);
   }
   return out;

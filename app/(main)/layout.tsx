@@ -2,10 +2,10 @@ import "./globals.css";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import NavLink from "@/components/NavLink";
 import ThemeToggle, { themeScript } from "@/components/ThemeToggle";
-import BriefChat from "@/components/BriefChat";
 import { Icon } from "@/components/ui";
 import { navFor } from "@/lib/nav";
-import MuiProviders from "@/components/mui/Providers";
+import { BriefChat, MuiProviders } from "@/components/SignedInOnly";
+import ThemeSync from "@/components/ThemeSync";
 import { currentUser } from "@/lib/session";
 import { canView, FORM_EDITOR, hasApiKey, hubRoleOf, isFormAdmin } from "@/lib/roles";
 
@@ -22,8 +22,9 @@ export default async function Layout({ children }: { children: React.ReactNode }
     <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable} ${display.variable}`}>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
       <body>
+        {/* Material UI is only used on signed-in pages, so signed-out visitors (sign-in, the public onboarding form) don't download it. */}
+        {!user ? <><ThemeSync />{children}</> : (
         <MuiProviders>
-        {!user ? children : (
           <div className="shell">
             <aside className="side">
               <div className="brand"><div className="logo"><img src="/havstrategy-logo.png" alt="HavStrategy logo" width={34} height={34} /></div><div><b>Havstrategy</b><span>Creator outreach</span></div></div>
@@ -48,8 +49,8 @@ export default async function Layout({ children }: { children: React.ReactNode }
             {/* the chat carries the API key, so only roles that may use the outreach API get it */}
             {hasApiKey(user.role) && <BriefChat appUrl={(process.env.APP_URL ?? "").replace(/\/+$/, "")} apiKey={process.env.API_KEY ?? ""} />}
           </div>
-        )}
         </MuiProviders>
+        )}
       </body>
     </html>
   );

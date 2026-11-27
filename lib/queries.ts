@@ -16,8 +16,11 @@ export async function listCreators(o: { clientId?: string; niche?: string; q?: s
   if (o.niche) filter.niches = rx(o.niche, true);
   if (o.status) filter.status = o.status === "New" ? { $in: ["New", null] } : o.status;
   if (o.q) filter.$or = ["name", "igHandle", "notes"].map((k) => ({ [k]: rx(o.q!) }));
-  const rows = (await creators.find(filter).limit(1000).toArray()).filter((c) => !o.tier || tierOf(c.followers) === o.tier);
-  const client = o.clientId && ObjectId.isValid(o.clientId) ? await clients.findOne({ _id: new ObjectId(o.clientId) }) : null;
+  const [found, client] = await Promise.all([
+    creators.find(filter).limit(1000).toArray(),
+    o.clientId && ObjectId.isValid(o.clientId) ? clients.findOne({ _id: new ObjectId(o.clientId) }) : null,
+  ]);
+  const rows = found.filter((c) => !o.tier || tierOf(c.followers) === o.tier);
   const out = rows.map((c) => ({ ...c, score: client ? score(c, client) : null }));
   const sorted = client ? out.filter((c) => c.score! >= (o.minScore ?? 0)).sort((a, b) => b.score! - a.score!) : out;
   if (o.page && o.limit) {

@@ -25,8 +25,16 @@ export default {
         { key: "Referrer-Policy", value: "same-origin" },
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
         { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }, // ignored on plain http://localhost
-        { key: "Cache-Control", value: "no-store" }, // pages hold creator data: never cached by the browser or a proxy
       ],
+    }, {
+      // Pages and API answers hold creator data: never cached by the browser or a proxy. Next's own built files are left alone: their names change
+      // with their content, so Next lets browsers keep them (this rule used to override that when self-hosting).
+      source: "/((?!_next/static/).*)",
+      headers: [{ key: "Cache-Control", value: "no-store" }],
+    }, {
+      // The logo is public and on every page: let browsers keep it for a day (a replaced logo shows within a day).
+      source: "/havstrategy-logo.png",
+      headers: [{ key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" }],
     }];
   },
 };

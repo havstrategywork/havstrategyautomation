@@ -1,3 +1,4 @@
+import type { ObjectId } from "mongodb";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { db, IG_CAP, sentToday } from "@/lib/db";
@@ -23,8 +24,7 @@ async function resume() {
 }
 
 export default async function Dashboard() {
-  const user = await currentUser();
-  const ctl = await controlState();
+  const [user, ctl] = await Promise.all([currentUser(), controlState()]);
   const { creators, clients, outreach, briefs } = await db();
   const since = new Date(Date.now() - 14 * 864e5);
   const startToday = new Date(new Date().setHours(0, 0, 0, 0));
@@ -66,9 +66,8 @@ export default async function Dashboard() {
   const responded = c("Replied") + c("Negotiating") + c("Agreed") + c("Declined");
   const contacted = responded + c("DM Sent");
   const rate = contacted ? Math.round((responded / contacted) * 100) : 0;
-  const people = new Map((await creators.find({ _id: { $in: recent.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
-  const followupPeople = new Map((await creators.find({ _id: { $in: followupsList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
-  const dmsTodayPeople = new Map((await creators.find({ _id: { $in: dmsTodayList.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
+  const namesOf = async (list: { creatorId: ObjectId }[]) => new Map((await creators.find({ _id: { $in: list.map((o) => o.creatorId) } }).project<{ _id: unknown; name: string; igHandle?: string }>({ name: 1, igHandle: 1 }).toArray()).map((p) => [String(p._id), p]));
+  const [people, followupPeople, dmsTodayPeople] = await Promise.all([namesOf(recent), namesOf(followupsList), namesOf(dmsTodayList)]);
 
   const dealsAgreed = c("Agreed");
   const funnelStages: FunnelStage[] = [
