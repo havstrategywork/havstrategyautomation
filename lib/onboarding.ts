@@ -1,4 +1,4 @@
-// The client onboarding form: ONE shape that drives the public page, the server-side validation, the dashboard and the .xlsx export.
+// The client onboarding form: ONE shape that drives the public page, the server-side validation and the Google Sheet.
 // The live questions are edited by admins on the "Form editor" page and stored in MongoDB (lib/onboardingForm.ts); DEFAULT_STEPS below is
 // what the form starts from. Pure (no imports), so the browser, the API route and the tests share it. Question wording comes from the
 // agency's old Google Form ("Onboarding Form", 62 items); the Creator marketing, Meta Ads and SEO steps were added later.

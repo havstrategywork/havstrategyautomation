@@ -1,3 +1,4 @@
+import SignInButton from "@/components/SignInButton";
 import ThemeToggle from "@/components/ThemeToggle";
 import { FORM_ADMIN, safeNext } from "@/lib/roles";
 import { currentUser } from "@/lib/session";
@@ -24,7 +25,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
         {next && <input type="hidden" name="next" value={next} />}
         <label>Username<input name="username" autoComplete="username" required maxLength={64} autoFocus /></label>
         <label>Password<input name="password" type="password" autoComplete="current-password" required maxLength={200} /></label>
-        <button style={{ justifyContent: "center", padding: ".65rem 1rem" }}>Sign in</button>
+        <SignInButton />
       </form>
     </main>
   );

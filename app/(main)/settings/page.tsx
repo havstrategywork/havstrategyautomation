@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { sheetIdFromUrl } from "@/lib/onboarding";
-import { pushUnsent, SETTING_ID } from "@/lib/onboardingSheet";
+import { SETTING_ID } from "@/lib/onboardingSheet";
 import { checkSheet, serviceEmail } from "@/lib/sheet";
 import { pageIdFromUrl, checkPage } from "@/lib/notion";
-import { NOTION_SETTING_ID, pushUnsentNotion } from "@/lib/notionBrief";
+import { NOTION_SETTING_ID } from "@/lib/notionBrief";
 import { currentUser } from "@/lib/session";
 import { Icon, PageHead, ago } from "@/components/ui";
 
@@ -29,17 +29,16 @@ async function saveSheet(f: FormData) {
   let name: string;
   try { name = await checkSheet(id); } catch (e) { return back((e as Error).message); }
   await (await db()).settings.updateOne({ _id: SETTING_ID }, { $set: { sheetUrl: link, sheetId: id, sheetName: name, tab, updatedAt: new Date(), by: me.username } }, { upsert: true });
-  const n = await pushUnsent(); // answers that arrived before the link was saved (or whose push failed) go in now
   revalidatePath("/settings"); revalidatePath("/onboarding-responses");
-  back(`Connected to "${name}". New answers are added to the "${tab}" tab as they come in${n ? `, and ${n} earlier submission${n === 1 ? " was" : "s were"} sent now` : ""}.`, true);
+  back(`Connected to "${name}". New answers are added to the "${tab}" tab as they come in.`, true);
 }
 
 async function disconnect() {
   "use server";
   await admin();
   await (await db()).settings.deleteOne({ _id: SETTING_ID });
-  revalidatePath("/settings");
-  back("Disconnected. New answers stay in the dashboard only.", true);
+  revalidatePath("/settings"); revalidatePath("/onboarding-responses");
+  back("Disconnected. The onboarding form can't accept answers until a sheet is connected again.", true);
 }
 
 async function saveNotion(f: FormData) {
@@ -52,9 +51,8 @@ async function saveNotion(f: FormData) {
   let title: string;
   try { title = await checkPage(id); } catch (e) { return back((e as Error).message); }
   await (await db()).settings.updateOne({ _id: NOTION_SETTING_ID }, { $set: { pageUrl: link, pageId: id, pageTitle: title, updatedAt: new Date(), by: me.username } }, { upsert: true });
-  const n = await pushUnsentNotion(); // answers that arrived before the link was saved (or whose push failed) go in now
-  revalidatePath("/settings"); revalidatePath("/onboarding-responses");
-  back(`Connected to "${title}". New briefs are added under it as submissions come in${n ? `, and ${n} earlier submission${n === 1 ? " was" : "s were"} sent now` : ""}.`, true);
+  revalidatePath("/settings");
+  back(`Connected to "${title}". New briefs are added under it as submissions come in.`, true);
 }
 
 async function disconnectNotion() {
@@ -80,9 +78,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <div className="card form">
         <div className="card-head"><h2><span className="ico good" style={{ display: "inline-grid", marginRight: ".6rem", verticalAlign: "middle" }}><Icon name="chart" /></span>Onboarding answers → Google Sheet</h2>
           {s?.sheetId && <span className="pill live"><i />Connected</span>}</div>
-        <p className="muted" style={{ margin: "-.4rem 0 1rem" }}>Every time a client submits the onboarding form, a new row is added to this sheet automatically.</p>
+        <p className="muted" style={{ margin: "-.4rem 0 1rem" }}>Every time a client submits the onboarding form, a new row is added to this sheet. This sheet is the only place answers are kept: they are not saved on the website.</p>
 
-        {!sa && <div className="notice" style={{ borderLeftColor: "var(--warn)" }}><b>The Google service account is not set up yet.</b> Add its JSON key to the environment as <code>GOOGLE_SA_JSON</code> (and turn on the Sheets and Drive APIs for its project), then restart. Without it the link can&apos;t be checked.</div>}
+        {!sa && <div className="notice" style={{ borderLeftColor: "var(--warn)" }}><b>The Google service account is not set up yet.</b> Add its JSON key to the environment as <code>GOOGLE_SA_JSON</code> (and turn on the Sheets and Drive APIs for its project), then restart. Until then the form can&apos;t accept answers.</div>}
         {fallback && <div className="notice">Right now the sheet comes from the <code>ONBOARDING_SHEET_ID</code> environment variable. Saving a link here replaces it.</div>}
 
         {s?.sheetId && (
@@ -104,7 +102,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
         <div className="notice" style={{ marginTop: "1.2rem", marginBottom: 0 }}>
           <b>Before you save:</b> open your Google Sheet, click <b>Share</b>, and add {sa ? <code>{sa}</code> : "the service account email"} as an <b>Editor</b>. Use a native Google Sheet (not an uploaded Excel file).
-          <div className="small muted" style={{ marginTop: ".3rem" }}>Switching to a new sheet doesn&apos;t copy submissions already sent to the old one. Download those anytime from Onboarding.</div>
+          <div className="small muted" style={{ marginTop: ".3rem" }}>Switching to a new sheet doesn&apos;t move earlier answers: they stay in the old one.</div>
         </div>
 
         {s?.sheetId && <form action={disconnect} style={{ marginTop: "1rem" }}><button className="ghost small-btn" style={{ color: "var(--bad)" }}>Disconnect this sheet</button></form>}
