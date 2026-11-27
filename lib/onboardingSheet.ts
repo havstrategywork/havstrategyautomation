@@ -1,9 +1,8 @@
-// Appends one onboarding submission to the agency's Google Sheet. The sheet is the ONLY place answers are stored (nothing goes in MongoDB).
+// Writes a submission straight to the agency's Google Sheet, which is the ONLY place the answers are kept: they are not saved in our database.
 // WHERE it goes is set on the dashboard's Settings page (saved in the `settings` collection). ONBOARDING_SHEET_ID / ONBOARDING_SHEET_TAB still work as a fallback.
 // The service account key (GOOGLE_SA_JSON) stays in the environment: it is a secret, so it is never stored in the database or shown on a page.
 import { db } from "./db";
-import { sheetHeader, sheetPairs, type Submission } from "./onboarding";
-import { getForm } from "./onboardingForm";
+import { sheetHeader, sheetPairs, type Step, type Submission } from "./onboarding";
 import { appendByTitle } from "./sheet";
 
 export const SETTING_ID = "onboardingSheet";
@@ -16,10 +15,9 @@ export async function sheetTarget() {
   return { id, tab: s?.tab || process.env.ONBOARDING_SHEET_TAB || "Onboarding", url: s?.sheetUrl ?? `https://docs.google.com/spreadsheets/d/${id}/edit` };
 }
 
-/** Throws when there is no sheet or Google refuses: the caller must tell the client, because nothing else keeps their answers. */
-export async function saveToSheet(sub: Submission) {
+/** Adds one submission as a row. Throws when no sheet is set up or Google refuses it, so the form can say it was NOT received. */
+export async function saveToSheet(submission: Submission, steps: readonly Step[]) {
   const target = await sheetTarget();
-  if (!target) throw new Error("no sheet connected");
-  const { steps } = await getForm();
-  await appendByTitle(target.id, target.tab, sheetHeader(steps), sheetPairs(sub, steps));
+  if (!target) throw new Error("no Google Sheet is connected (check the Settings page and GOOGLE_SA_JSON)");
+  await appendByTitle(target.id, target.tab, sheetHeader(steps), sheetPairs(submission, steps));
 }

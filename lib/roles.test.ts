@@ -23,5 +23,6 @@ for (const bad of ["//evil.com", "https://evil.com", "/users", "/onboarding-form
 // the account stays protected whatever its role says
 assert.ok(isFormAdminAccount({ username: FORM_ADMIN }) && isFormAdminAccount({ username: "x", email: FORM_ADMIN }) && !isFormAdminAccount({ username: "x", email: null }));
 console.log("roles ok");
+assert.ok(canView("admin", "/onboarding-responses") && !canView("outreach", "/onboarding-responses") && !canView("social", "/onboarding-responses") && !canView("mail", "/onboarding-responses/export"));
 assert.ok(canView("admin", "/onboarding-form") && !canView("outreach", "/onboarding-form") && !canView("social", "/onboarding-form") && !canView("mail", "/onboarding-form"));
 assert.ok(canView("admin", "/settings") && !canView("outreach", "/settings") && !canView("social", "/settings") && !canView("mail", "/settings"));

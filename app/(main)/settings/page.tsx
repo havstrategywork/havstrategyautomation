@@ -29,7 +29,7 @@ async function saveSheet(f: FormData) {
   let name: string;
   try { name = await checkSheet(id); } catch (e) { return back((e as Error).message); }
   await (await db()).settings.updateOne({ _id: SETTING_ID }, { $set: { sheetUrl: link, sheetId: id, sheetName: name, tab, updatedAt: new Date(), by: me.username } }, { upsert: true });
-  revalidatePath("/settings");
+  revalidatePath("/settings"); revalidatePath("/onboarding-responses");
   back(`Connected to "${name}". New answers are added to the "${tab}" tab as they come in.`, true);
 }
 
@@ -37,8 +37,8 @@ async function disconnect() {
   "use server";
   await admin();
   await (await db()).settings.deleteOne({ _id: SETTING_ID });
-  revalidatePath("/settings");
-  back("Disconnected. The onboarding form will refuse submissions until a sheet is connected again.", true);
+  revalidatePath("/settings"); revalidatePath("/onboarding-responses");
+  back("Disconnected. The onboarding form can't accept answers until a sheet is connected again.", true);
 }
 
 async function saveNotion(f: FormData) {
@@ -78,9 +78,9 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <div className="card form">
         <div className="card-head"><h2><span className="ico good" style={{ display: "inline-grid", marginRight: ".6rem", verticalAlign: "middle" }}><Icon name="chart" /></span>Onboarding answers → Google Sheet</h2>
           {s?.sheetId && <span className="pill live"><i />Connected</span>}</div>
-        <p className="muted" style={{ margin: "-.4rem 0 1rem" }}>Every time a client submits the onboarding form, a new row is added to this sheet. The sheet is the only place the answers are kept, so keep it connected.</p>
+        <p className="muted" style={{ margin: "-.4rem 0 1rem" }}>Every time a client submits the onboarding form, a new row is added to this sheet. This sheet is the only place answers are kept: they are not saved on the website.</p>
 
-        {!sa && <div className="notice" style={{ borderLeftColor: "var(--warn)" }}><b>The Google service account is not set up yet.</b> Add its JSON key to the environment as <code>GOOGLE_SA_JSON</code> (and turn on the Sheets and Drive APIs for its project), then restart. Without it the link can&apos;t be checked.</div>}
+        {!sa && <div className="notice" style={{ borderLeftColor: "var(--warn)" }}><b>The Google service account is not set up yet.</b> Add its JSON key to the environment as <code>GOOGLE_SA_JSON</code> (and turn on the Sheets and Drive APIs for its project), then restart. Until then the form can&apos;t accept answers.</div>}
         {fallback && <div className="notice">Right now the sheet comes from the <code>ONBOARDING_SHEET_ID</code> environment variable. Saving a link here replaces it.</div>}
 
         {s?.sheetId && (
@@ -102,7 +102,7 @@ export default async function Settings({ searchParams }: { searchParams: Promise
 
         <div className="notice" style={{ marginTop: "1.2rem", marginBottom: 0 }}>
           <b>Before you save:</b> open your Google Sheet, click <b>Share</b>, and add {sa ? <code>{sa}</code> : "the service account email"} as an <b>Editor</b>. Use a native Google Sheet (not an uploaded Excel file).
-          <div className="small muted" style={{ marginTop: ".3rem" }}>Switching to a new sheet doesn&apos;t copy rows already in the old one.</div>
+          <div className="small muted" style={{ marginTop: ".3rem" }}>Switching to a new sheet doesn&apos;t move earlier answers: they stay in the old one.</div>
         </div>
 
         {s?.sheetId && <form action={disconnect} style={{ marginTop: "1rem" }}><button className="ghost small-btn" style={{ color: "var(--bad)" }}>Disconnect this sheet</button></form>}

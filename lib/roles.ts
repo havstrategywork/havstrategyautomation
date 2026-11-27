@@ -6,7 +6,7 @@ export type Role = (typeof ROLES)[number];
 export const roleOf = (r?: string): Role => (ROLES as readonly string[]).includes(r ?? "") ? (r as Role) : "admin";
 
 const under = (p: string, base: string) => p === base || p.startsWith(`${base}/`);
-const ADMIN_ONLY = ["/users", "/automation", "/social/orgs", "/social/connect", "/onboarding-form", "/settings"];
+const ADMIN_ONLY = ["/users", "/automation", "/social/orgs", "/social/connect", "/onboarding-responses", "/onboarding-form", "/settings"];
 
 // The onboarding form's questions are editable by ONE login only (not every admin). It is reached from the "Admin" tab on the public form.
 export const FORM_ADMIN = "havstrategy"; // the team's one login

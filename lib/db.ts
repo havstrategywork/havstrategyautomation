@@ -140,9 +140,11 @@ export type Org = { _id?: ObjectId; name: string; createdAt: Date; buffer?: { ch
 export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };
 export type BotFlowDoc = { _id?: ObjectId; orgId: ObjectId; igId: string; name: string; enabled: boolean; nodes: BotNode[]; edges: BotEdge[]; createdAt: Date; updatedAt: Date };
 export type BotSession = { _id: string; flowId: ObjectId; nodeId: string; vars: Vars; at: Date }; // who is mid-conversation with a question step (expires with Meta's 24h reply window)
+// one per recent public onboarding submission, only to limit how often one address can send (the answers themselves are not stored)
+export type OnboardingHit = { _id?: ObjectId; ipHash: string; at: Date };
 // the live onboarding form, edited on the "Form editor" page (one document, _id "form"); absent = the built-in DEFAULT_STEPS
 export type OnboardingFormDoc = { _id: string; version: number; steps: Step[]; updatedAt: Date; by: string };
-// dashboard settings, one doc per area: _id "onboardingNotion" is where the brief page is created (an old "onboardingSheet" doc may remain; unused)
+// dashboard settings, one doc per area: _id "onboardingSheet" is where answers go, "onboardingNotion" where the brief page is created
 export type Setting = { _id: string; sheetUrl?: string; sheetId?: string; sheetName?: string; tab?: string; pageId?: string; pageUrl?: string; pageTitle?: string; updatedAt: Date; by?: string };
 export type BotSeen = { _id: string; at: Date }; // webhook message ids already handled (Meta retries)
 
@@ -172,6 +174,8 @@ async function setupIndexes(d: ReturnType<MongoClient["db"]>) {
   await d.collection("botFlows").createIndex({ igId: 1, createdAt: 1 });
   await d.collection("botSessions").createIndex({ at: 1 }, { expireAfterSeconds: 24 * 3600 });
   await d.collection("botSeen").createIndex({ at: 1 }, { expireAfterSeconds: 2 * 24 * 3600 });
+  await d.collection("onboardingHits").createIndex({ at: 1 }, { expireAfterSeconds: 3600 });
+  await d.collection("onboardingHits").createIndex({ ipHash: 1, at: 1 });
 }
 
 export async function db() {
@@ -196,6 +200,7 @@ export async function db() {
     botFlows: d.collection<BotFlowDoc>("botFlows"),
     botSessions: d.collection<BotSession>("botSessions"),
     botSeen: d.collection<BotSeen>("botSeen"),
+    onboardingHits: d.collection<OnboardingHit>("onboardingHits"),
     onboardingForm: d.collection<OnboardingFormDoc>("onboardingForm"),
     settings: d.collection<Setting>("settings"),
   };

@@ -1,10 +1,11 @@
 // Posts a condensed "brief" page to Notion for each onboarding submission: just the handful of answers a strategist needs
-// before kickoff, not the full 50+ question dump (that lives in the Google Sheet). Where it
+// before kickoff, not the full 50+ question dump (that lives in the onboarding Google Sheet). Where it
 // goes is set on the dashboard's Settings page (saved in the `settings` collection, _id "onboardingNotion"). NOTION_PARENT_PAGE_ID
 // is a fallback.
 // Explicit .ts extensions here (unlike the rest of this codebase) so this file's pure logic (briefBlocks/briefTitle) can be
 // run and tested directly with plain `node`, which — unlike Next's bundler — won't resolve a bare specifier like "./db".
 import { db } from "./db.ts";
+import { notify } from "./notify.ts";
 import { SERVICES, type ServiceId } from "./onboarding.ts";
 import { bullet, type Block, callout, createBriefPage, divider, h2, p as para } from "./notion.ts";
 
@@ -47,18 +48,21 @@ export function briefBlocks(services: ServiceId[], a: Record<string, string>): B
   if (goals.length) blocks.push(h2("What they want from each service"), ...goals);
   const budget = g(a, "budget") || g(a, "crBudget");
   if (budget) blocks.push(h2("Budget"), para(budget));
-  blocks.push(divider(), callout("Every answer, including files, is in the onboarding Google Sheet."));
+  blocks.push(divider(), callout("Every answer, including file links, is in the onboarding Google Sheet."));
   return blocks;
 }
 
 export const briefTitle = (a: Record<string, string>, at: Date) => `${a.company || a.name || "New client"} — ${at.toISOString().slice(0, 10)}`;
 
-/** Never throws: a Notion outage must not fail a submission (the answers are already in the Google Sheet). No retry: a missed brief is rebuilt from the sheet row by hand. */
-export async function pushToNotion(sub: { at: Date; services: string[]; answers: Record<string, string> }) {
+/** Never throws: the answers are already in the Google Sheet, so a Notion outage only costs the brief page (the team is told). */
+export async function pushToNotion({ at, services, answers }: { at: Date; services: string[]; answers: Record<string, string> }) {
   try {
     const target = await briefTarget();
-    if (target) await createBriefPage(target.id, briefTitle(sub.answers, sub.at), briefBlocks(sub.services as ServiceId[], sub.answers));
+    if (!target) return;
+    await createBriefPage(target.id, briefTitle(answers, at), briefBlocks(services as ServiceId[], answers));
   } catch (e) {
-    console.error("onboarding: Notion brief failed:", (e as Error).message);
+    const reason = (e as Error).message.slice(0, 300);
+    console.error("onboarding: the Notion brief was not created:", reason);
+    await notify(`Notion brief not created: ${answers.company}`, reason);
   }
 }
