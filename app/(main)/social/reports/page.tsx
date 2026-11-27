@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { db } from "@/lib/db";
-import { buildReport, bufferKey, days, KPIS, parseRange, pctChange, prevRange, todayIn, topBy, type Content, type Linked, type Range, type Sec } from "@/lib/buffer";
+import { keyFor } from "@/lib/bufferKeys";
+import { db, type Org } from "@/lib/db";
+import { buildReport, days, KPIS, parseRange, pctChange, prevRange, todayIn, topBy, type Content, type Linked, type Range, type Sec } from "@/lib/buffer";
 import { currentUser } from "@/lib/session";
 import { Avatar, Icon } from "@/components/ui";
 import { fmt } from "@/components/charts";
@@ -59,8 +60,8 @@ function Skeleton({ ch }: { ch: Linked }) {
   );
 }
 
-async function ChannelReport({ ch, range }: { ch: Linked; range: Range }) {
-  const r = await buildReport(ch, range), t = sub(r.totals), posts = sub(r.posts) ?? [];
+async function ChannelReport({ ch, range, org }: { ch: Linked; range: Range; org: Pick<Org, "bufferKey"> }) {
+  const r = await buildReport(ch, range, todayIn(), keyFor(org)), t = sub(r.totals), posts = sub(r.posts) ?? [];
   const errors = [...new Set([r.totals, r.posts].flatMap((x) => (x.ok ? [] : [x.error])))];
   return (
     <div className="card rep">
@@ -117,7 +118,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
         {list.length > 0 && <OrgTabs orgs={list} current={String(org._id)} href={(id) => `/social/reports?${keep({ org: id })}`} />}
       </SocialHead>
 
-      {!bufferKey() && <div className="notice warn"><b>Buffer is not connected.</b> Set BUFFER_API_KEY in the environment (key from publish.buffer.com/settings/api).</div>}
+      {!keyFor(org) && <div className="notice warn"><b>Buffer is not connected.</b> Add this organization&apos;s Buffer key on the Organizations page, or set BUFFER_API_KEY in the environment (key from publish.buffer.com/settings/api).</div>}
 
       {!list.length ? (
         <Empty icon="layers" title="No organizations yet">{me?.role === "admin" && <><Link href="/social/orgs">Add one</Link> to start reporting.</>}</Empty>
@@ -162,7 +163,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
               <div className={`rep-grid${chosen.length === 1 ? " one" : ""}`}>
                 {chosen.map((a) => (
                   <Suspense key={`${a.channelId}${range.from}${range.to}`} fallback={<Skeleton ch={a} />}>
-                    <ChannelReport ch={a} range={range} />
+                    <ChannelReport ch={a} range={range} org={{ bufferKey: org.bufferKey }} />
                   </Suspense>
                 ))}
               </div>

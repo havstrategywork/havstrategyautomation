@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { keyFor } from "@/lib/bufferKeys";
 import { db } from "@/lib/db";
-import { bufferKey, BufferError, dayIn, listPosts, monthGrid, shiftMonth, timeIn, todayIn, type Linked, type Planned } from "@/lib/buffer";
+import { BufferError, dayIn, listPosts, monthGrid, shiftMonth, timeIn, todayIn, type Linked, type Planned } from "@/lib/buffer";
 import { currentUser } from "@/lib/session";
 import { Avatar, Icon } from "@/components/ui";
 import { Empty, OrgTabs, Seg, SocialHead } from "@/components/social";
@@ -16,10 +17,10 @@ const PER_DAY = 3; // calendar chips shown per day before "+N more"
 const utc = (day: string, end = false) => `${day}T${end ? "23:59:59" : "00:00:00"}+05:30`; // a calendar day in India time
 
 /** Posts of every linked channel, one Buffer call per Buffer organization (channels of one org are asked together). */
-async function fetchAll(channels: Linked[], filter: string): Promise<Planned[]> {
+async function fetchAll(channels: Linked[], filter: string, key: string): Promise<Planned[]> {
   const byOrg = new Map<string, string[]>();
   for (const c of channels) byOrg.set(c.organizationId, [...(byOrg.get(c.organizationId) ?? []), c.channelId]);
-  return (await Promise.all([...byOrg].map(([org, ids]) => listPosts(org, ids, filter)))).flat();
+  return (await Promise.all([...byOrg].map(([org, ids]) => listPosts(org, ids, filter, key)))).flat();
 }
 
 export default async function Planner({ searchParams }: { searchParams: Promise<{ org?: string; view?: string; m?: string }> }) {
@@ -30,13 +31,13 @@ export default async function Planner({ searchParams }: { searchParams: Promise<
   const channels: Linked[] = org?.buffer ?? [], name = new Map(channels.map((c) => [c.channelId, c]));
   const month = sp.m && MONTH.test(sp.m) ? sp.m : today.slice(0, 7), grid = monthGrid(month);
   const qs = (extra: Record<string, string>) => `/social/planner?${new URLSearchParams({ org: String(org?._id ?? ""), view, ...(view === "calendar" && { m: month }), ...extra })}`;
-  const ready = !!org && channels.length > 0 && !!bufferKey();
+  const key = keyFor(org), ready = !!org && channels.length > 0 && !!key;
 
   let posts: Planned[] = [], sent: Planned[] = [], error = "";
   if (ready) {
     try {
-      if (view === "calendar") posts = await fetchAll(channels, `dueAt: { start: "${new Date(utc(grid[0])).toISOString()}" end: "${new Date(utc(grid.at(-1)!, true)).toISOString()}" }`);
-      else [posts, sent] = await Promise.all([fetchAll(channels, "status: [draft, needs_approval, scheduled, sending, error]"), fetchAll(channels, `status: [sent] dueAt: { start: "${new Date(Date.now() - 14 * 864e5).toISOString()}" }`)]);
+      if (view === "calendar") posts = await fetchAll(channels, `dueAt: { start: "${new Date(utc(grid[0])).toISOString()}" end: "${new Date(utc(grid.at(-1)!, true)).toISOString()}" }`, key);
+      else [posts, sent] = await Promise.all([fetchAll(channels, "status: [draft, needs_approval, scheduled, sending, error]", key), fetchAll(channels, `status: [sent] dueAt: { start: "${new Date(Date.now() - 14 * 864e5).toISOString()}" }`, key)]);
     } catch (e) { error = e instanceof BufferError ? e.message : "Could not load posts from Buffer."; }
   }
 
@@ -73,7 +74,7 @@ export default async function Planner({ searchParams }: { searchParams: Promise<
         {list.length > 0 && <Seg label="View" items={[{ href: qs({ view: "calendar" }), text: "Calendar", icon: "calendar", on: view === "calendar" }, { href: qs({ view: "kanban" }), text: "Board", icon: "columns", on: view === "kanban" }]} />}
       </SocialHead>
 
-      {!bufferKey() && <div className="notice warn"><b>Buffer is not connected.</b> Set BUFFER_API_KEY in the environment.</div>}
+      {!key && <div className="notice warn"><b>Buffer is not connected.</b> Add this organization&apos;s Buffer key on the Organizations page, or set BUFFER_API_KEY in the environment.</div>}
       {error && <div className="notice bad">{error}</div>}
 
       {!list.length ? <Empty icon="layers" title="No organizations yet">{me?.role === "admin" ? <><Link href="/social/orgs">Add one</Link> and link its Buffer channels to start planning.</> : "Ask an admin to add one."}</Empty>

@@ -135,7 +135,7 @@ export type MailThread = {
 export type MailRun = { _id?: ObjectId; at: Date; ok: boolean; note?: string };
 
 // Social-media dashboard. An org groups the Instagram accounts of one client; accounts are the Meta connections below.
-export type Org = { _id?: ObjectId; name: string; createdAt: Date; buffer?: { channelId: string; organizationId: string; name: string; service: string; avatar?: string }[] /* Buffer channels this client reports on */ };
+export type Org = { _id?: ObjectId; name: string; createdAt: Date; bufferKey?: string /* this client's own Buffer API key, sealed (lib/secrets.ts); absent = the shared BUFFER_API_KEY */; buffer?: { channelId: string; organizationId: string; name: string; service: string; avatar?: string }[] /* Buffer channels this client reports on */ };
 
 // Chat bots. A connection = one Instagram account the org's client approved through Meta login (token stored encrypted). A flow belongs to one connection.
 export type BotConnection = { _id?: ObjectId; test?: boolean /* fake connection for trying the builder (scripts/test-connection.mjs): never sends */; orgId: ObjectId; igId: string; username?: string; token: string; businessId?: string; connectedAt: Date; subscribed?: boolean; lastError?: { message: string; at: Date } };

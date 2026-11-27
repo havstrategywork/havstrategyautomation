@@ -25,6 +25,12 @@ const clientIdInput = {
   },
 } as { _input: { clientId: string }; _output: { clientId: string }; parseAsync: (v: unknown) => Promise<{ clientId: string }> };
 
+async function plannerOnly() {
+  const me = await currentUser();
+  if (!me || !canView(me.role, "/social/planner")) throw new UploadThingError("sign in first");
+  return {};
+}
+
 export const ourFileRouter = {
   brandFile: f({ pdf: { maxFileSize: "16MB", maxFileCount: 1 }, blob: { maxFileSize: "16MB", maxFileCount: 1 } })
     .input(clientIdInput)
@@ -39,13 +45,15 @@ export const ourFileRouter = {
     .onUploadComplete(async ({ metadata, file }) => {
       await (await db()).clients.updateOne({ _id: new ObjectId(metadata.clientId) }, { $set: { guidelinesFileUrl: file.ufsUrl, guidelinesFileName: file.name } });
     }),
-  // Media for the social planner (one image or video per post). Buffer fetches it from this public URL when the post goes out, so it stays up.
-  socialMedia: f({ image: { maxFileSize: "16MB", maxFileCount: 1 }, video: { maxFileSize: "256MB", maxFileCount: 1 } })
-    .middleware(async () => {
-      const me = await currentUser();
-      if (!me || !canView(me.role, "/social/planner")) throw new UploadThingError("sign in first");
-      return {};
-    })
+  // Media for the social planner. Buffer fetches it from this public URL when the post goes out, so it stays up.
+  socialMedia: f({ image: { maxFileSize: "16MB", maxFileCount: 1 }, video: { maxFileSize: "256MB", maxFileCount: 1 } }) // reels and stories: one file
+    .middleware(plannerOnly)
+    .onUploadComplete(async () => ({})),
+  socialCarousel: f({ image: { maxFileSize: "16MB", maxFileCount: 10 }, video: { maxFileSize: "256MB", maxFileCount: 10 } }) // feed posts: several make a carousel
+    .middleware(plannerOnly)
+    .onUploadComplete(async () => ({})),
+  socialCover: f({ image: { maxFileSize: "8MB", maxFileCount: 1 } }) // a reel's cover image, for reminder posts
+    .middleware(plannerOnly)
     .onUploadComplete(async () => ({})),
   // PUBLIC: the onboarding form's uploads (logos, brand manual, customer list...). No login, so it is capped hard: 16MB a file, 5 files a field.
   // Types are limited by uploadthing's categories; the form only ever stores the resulting URLs.

@@ -1,4 +1,5 @@
 import { ObjectId } from "mongodb";
+import { keyFor } from "@/lib/bufferKeys";
 import { db } from "@/lib/db";
 import { buildReport, parseRange, reportRows, todayIn, toCsv } from "@/lib/buffer";
 import { canView } from "@/lib/roles";
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   const chans = (o.buffer ?? []).filter((c) => !want.size || want.has(c.channelId)); // only channels this org has linked, whatever ids the URL carries
   const { range } = parseRange({ from: q.get("from") ?? "", to: q.get("to") ?? "" }, todayIn());
 
-  const rows = (await Promise.all(chans.map(async (c) => reportRows(c.name, await buildReport(c, range))))).flat();
+  const rows = (await Promise.all(chans.map(async (c) => reportRows(c.name, await buildReport(c, range, todayIn(), keyFor(o)))))).flat();
   const name = `buffer-report-${o.name.replace(/[^\w-]+/g, "-").toLowerCase()}-${range.from}-to-${range.to}.csv`;
   return new Response("﻿" + toCsv(rows), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "no-store" } });
 }

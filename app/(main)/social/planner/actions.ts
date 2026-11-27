@@ -2,6 +2,7 @@
 // Everything the planner changes in Buffer. Each action re-checks the role (the proxy already blocks the page, but a server action must never trust that alone)
 // and that the channel is one an organization of ours has linked, so a forged request can't touch other channels the API key happens to reach.
 import { db } from "@/lib/db";
+import { keyFor } from "@/lib/bufferKeys";
 import { BufferError, checkNewPost, createPostBody, deleteBody, dayIn, getPost, istToUtc, moveBody, mutate, rescheduleBody, type NewPost } from "@/lib/buffer";
 import { canView } from "@/lib/roles";
 import { currentUser } from "@/lib/session";
@@ -13,17 +14,21 @@ async function allowed() {
   const me = await currentUser();
   return !!me && canView(me.role, "/social/planner");
 }
-/** The linked channel (or null) for a Buffer channel id. */
+/** The linked channel (or null) for a Buffer channel id, with the Buffer key of the organization that linked it. */
 async function linked(channelId: string) {
-  const o = await (await db()).orgs.findOne({ "buffer.channelId": channelId });
-  return o?.buffer?.find((b) => b.channelId === channelId) ?? null;
+  const o = await (await db()).orgs.findOne({ "buffer.channelId": channelId }), b = o?.buffer?.find((x) => x.channelId === channelId);
+  return b ? { ...b, key: keyFor(o) } : null;
 }
-/** The post, or the reason it can not be changed. */
+/** The post (with the key that reaches it), or the reason it can not be changed. */
 async function guardPost(id: string) {
   if (!(await allowed())) return "Not allowed.";
-  const p = await getPost(id).catch(() => null);
-  if (!p || !(await linked(p.channelId))) return "That post is not on a channel linked here.";
-  return p;
+  // only a post id comes in, so ask each key that has linked channels, and accept the answer only for a channel linked under that same key
+  const keys = new Set((await (await db()).orgs.find({ "buffer.0": { $exists: true } }).toArray()).map(keyFor).filter(Boolean));
+  for (const key of keys) {
+    const p = await getPost(id, key).catch(() => null);
+    if (p && (await linked(p.channelId))?.key === key) return { ...p, key };
+  }
+  return "That post is not on a channel linked here.";
 }
 
 export async function createPost(f: FormData): Promise<Result> {
@@ -33,10 +38,13 @@ export async function createPost(f: FormData): Promise<Result> {
   const mode = (["schedule", "queue", "draft"] as const).find((m) => m === f.get("mode")) ?? "schedule";
   const date = String(f.get("date") ?? ""), time = String(f.get("time") ?? "") || "10:00";
   const dueAt = mode === "queue" ? undefined : istToUtc(date, time) ?? undefined; // a draft keeps its date if one was given
-  const post: NewPost = { channelId, service: l.service, text: String(f.get("text") ?? "").trim(), mode, dueAt, mediaUrl: String(f.get("media") ?? "").trim() || undefined, mediaKind: (["image", "video"] as const).find((k) => k === f.get("mediaKind")), igType: (["post", "reel", "story"] as const).find((t) => t === f.get("igType")), notify: f.get("notify") === "on" };
+  const kinds = f.getAll("mediaKind"); // one per media link, in the same order
+  const media = f.getAll("media").map((u, i) => ({ url: String(u).trim(), kind: (["image", "video"] as const).find((k) => k === kinds[i]) })).filter((m) => m.url);
+  const cover = String(f.get("coverMs") ?? "");
+  const post: NewPost = { channelId, service: l.service, text: String(f.get("text") ?? "").trim(), mode, dueAt, media, igType: (["post", "reel", "story"] as const).find((t) => t === f.get("igType")), notify: f.get("notify") === "on", coverMs: /^\d{1,8}$/.test(cover) ? Number(cover) : undefined, coverUrl: String(f.get("coverUrl") ?? "").trim() || undefined };
   const bad = checkNewPost(post);
   if (bad) { console.error("[planner] refused:", bad); return { ok: false, message: bad }; }
-  try { await mutate(createPostBody(post)); } catch (e) { return fail(e); }
+  try { await mutate(createPostBody(post), l.key); } catch (e) { return fail(e); }
   return { ok: true, message: mode === "draft" ? "Saved as a draft." : mode === "queue" ? "Added to the Buffer queue." : "Scheduled." };
 }
 
@@ -49,7 +57,7 @@ export async function movePost(id: string, to: "draft" | "scheduled"): Promise<R
   if (g.status === to) return { ok: true, message: "Already there." };
   if (!(["draft", "scheduled"] as string[]).includes(g.status)) return { ok: false, message: "Only drafts and scheduled posts can be moved." };
   const dueAt = g.dueAt && Date.parse(g.dueAt) > Date.now() + 60_000 ? g.dueAt : tomorrowTen();
-  try { await mutate(moveBody(id, to, dueAt)); } catch (e) { return fail(e); }
+  try { await mutate(moveBody(id, to, dueAt), g.key); } catch (e) { return fail(e); }
   return { ok: true, message: to === "draft" ? "Moved back to drafts." : `Scheduled for ${dayIn(dueAt)}.` };
 }
 
@@ -57,13 +65,13 @@ export async function reschedulePost(id: string, date: string, time: string): Pr
   const g = await guardPost(id), dueAt = istToUtc(date, time);
   if (typeof g === "string") return { ok: false, message: g };
   if (!dueAt || Date.parse(dueAt) < Date.now() + 60_000) return { ok: false, message: "Pick a date and time in the future." };
-  try { await mutate(rescheduleBody(id, dueAt)); } catch (e) { return fail(e); }
+  try { await mutate(rescheduleBody(id, dueAt), g.key); } catch (e) { return fail(e); }
   return { ok: true, message: "Rescheduled." };
 }
 
 export async function removePost(id: string): Promise<Result> {
   const g = await guardPost(id);
   if (typeof g === "string") return { ok: false, message: g };
-  try { await mutate(deleteBody(id)); } catch (e) { return fail(e); }
+  try { await mutate(deleteBody(id), g.key); } catch (e) { return fail(e); }
   return { ok: true, message: "Deleted from Buffer (a post already on Instagram stays there)." };
 }
