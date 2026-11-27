@@ -90,23 +90,45 @@ const g = monthGrid("2026-11"); // 1 Nov 2026 is a Sunday: the grid starts Monda
 assert.deepEqual([g[0], g.at(-1), g.length % 7], ["2026-10-26", "2026-12-06", 0]);
 assert.equal(monthGrid("2026-06").length, 35); // June 2026 fits in 5 weeks
 
-const ig = { channelId: "c1", service: "instagram", text: "hi", mode: "schedule" as const, dueAt: "2026-12-01T09:00:00.000Z", mediaUrl: "https://x.test/a.jpg" };
+const ig = { channelId: "c1", service: "instagram", text: "hi", mode: "schedule" as const, dueAt: "2026-12-01T09:00:00.000Z", media: [{ url: "https://x.test/a.jpg" }] as { url: string; kind?: "image" | "video" }[] };
 const now = Date.parse("2026-11-26T00:00:00Z");
 assert.equal(checkNewPost(ig, now), null);
-assert.match(checkNewPost({ ...ig, mediaUrl: undefined }, now)!, /need an image or video/); // Instagram never posts text only
-assert.match(checkNewPost({ ...ig, mediaUrl: "http://x.test/a.jpg" }, now)!, /https/);
+assert.match(checkNewPost({ ...ig, media: [] }, now)!, /need an image or video/); // Instagram never posts text only
+assert.match(checkNewPost({ ...ig, media: [{ url: "http://x.test/a.jpg" }] }, now)!, /https/);
 assert.match(checkNewPost({ ...ig, text: "x".repeat(2197) }, now)!, /2196/);
 assert.match(checkNewPost({ ...ig, dueAt: "2026-11-25T00:00:00Z" }, now)!, /future/);
 assert.equal(checkNewPost({ ...ig, mode: "queue", dueAt: undefined }, now), null); // the queue needs no time
-const body = createPostBody({ ...ig, text: 'say "hi"\nnext', igType: "reel", mediaUrl: "https://x.test/v.mp4" });
+const body = createPostBody({ ...ig, text: 'say "hi"\nnext', igType: "reel", media: [{ url: "https://x.test/v.mp4" }] });
 assert.ok(body.includes('text: "say \\"hi\\"\\nnext"') && body.includes("customScheduled") && body.includes('video: { url: "https://x.test/v.mp4" }') && body.includes("type: reel") && !body.includes("saveToDraft")); // quotes and newlines are escaped
 const dbody = createPostBody({ ...ig, mode: "draft", dueAt: undefined });
 assert.ok(dbody.includes("saveToDraft: true") && dbody.includes("addToQueue") && !dbody.includes("dueAt") && dbody.includes('image: { url:'));
 assert.ok(!createPostBody({ ...ig, service: "facebook" }).includes("metadata")); // only Instagram gets Instagram metadata
-const ut = createPostBody({ ...ig, mediaUrl: "https://app.ufs.sh/f/KEY", mediaKind: "video" }); // UploadThing links have no extension: the uploader's file type decides
-assert.ok(ut.includes("video: { url") && !ut.includes("image: {") && createPostBody({ ...ig, mediaUrl: "https://app.ufs.sh/f/KEY" }).includes("image: { url"));
+const ut = createPostBody({ ...ig, media: [{ url: "https://app.ufs.sh/f/KEY", kind: "video" }] }); // UploadThing links have no extension: the uploader's file type decides
+assert.ok(ut.includes("video: { url") && !ut.includes("image: {") && createPostBody({ ...ig, media: [{ url: "https://app.ufs.sh/f/KEY" }] }).includes("image: { url"));
 assert.ok(moveBody("p1", "draft").includes("saveToDraft: true") && moveBody("p1", "scheduled", "2026-12-01T09:00:00.000Z").includes("customScheduled"));
 assert.ok(deleteBody("p1").includes("deletePost"));
+
+// ---- carousels ----
+const three = [{ url: "https://x.test/1.jpg" }, { url: "https://x.test/2.jpg" }, { url: "https://app.ufs.sh/f/K3", kind: "video" as const }];
+assert.equal(checkNewPost({ ...ig, igType: "post", media: three }, now), null);
+assert.ok(createPostBody({ ...ig, igType: "post", media: three }).includes('assets: [{ image: { url: "https://x.test/1.jpg" } } { image: { url: "https://x.test/2.jpg" } } { video: { url: "https://app.ufs.sh/f/K3" } }]')); // in the chosen order
+assert.match(checkNewPost({ ...ig, media: Array.from({ length: 11 }, () => ig.media[0]) }, now)!, /at most 10/);
+assert.match(checkNewPost({ ...ig, media: [ig.media[0], { url: "http://x.test/2.jpg" }] }, now)!, /https/); // every link, not just the first
+assert.match(checkNewPost({ ...ig, igType: "story", media: three }, now)!, /exactly one/);
+// ---- reels and their cover ----
+const reel = { ...ig, igType: "reel" as const, media: [{ url: "https://x.test/v.mp4" }] };
+assert.equal(checkNewPost(reel, now), null);
+assert.match(checkNewPost({ ...reel, media: three }, now)!, /exactly one video/);
+assert.match(checkNewPost({ ...reel, media: ig.media }, now)!, /exactly one video/); // an image is not a reel
+assert.ok(createPostBody({ ...reel, coverMs: 2500 }).includes('video: { url: "https://x.test/v.mp4" metadata: { thumbnailOffset: 2500 } }'));
+assert.ok(createPostBody({ ...reel, coverMs: 0 }).includes("thumbnailOffset: 0") && !createPostBody(reel).includes("thumbnailOffset"));
+assert.ok(!createPostBody({ ...reel, igType: "post", coverMs: 2500 }).includes("thumbnailOffset")); // only reels
+const own = { ...reel, coverUrl: "https://app.ufs.sh/f/COVER" };
+assert.match(checkNewPost(own, now)!, /can't be published automatically/);
+assert.equal(checkNewPost({ ...own, notify: true }, now), null);
+const reminder = createPostBody({ ...own, notify: true });
+assert.ok(reminder.includes("schedulingType: notification") && reminder.includes('stickerFields: { other: "Cover image: https://app.ufs.sh/f/COVER" }') && !reminder.includes("thumbnailUrl"));
+assert.ok(!createPostBody(own).includes("COVER")); // never sent on an automatic post
 
 assert.equal(await mutate(createPostBody(ig)), "p9");
 assert.equal(await mutate(deleteBody("p9")), "p9");

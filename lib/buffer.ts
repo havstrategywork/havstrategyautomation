@@ -190,24 +190,43 @@ export async function getPost(id: string, key = bufferKey()): Promise<Planned> {
   return normalizePlanned((await gql<{ post: Json }>(`{ post(input: { id: ${q(id)} }) { id channelId status text dueAt } }`, 0, key)).post);
 }
 
-export type NewPost = { channelId: string; service: string; text: string; mode: "schedule" | "queue" | "draft"; dueAt?: string; mediaUrl?: string; mediaKind?: "image" | "video"; igType?: "post" | "reel" | "story"; notify?: boolean };
+export type Media = { url: string; kind?: "image" | "video" };
+export type NewPost = {
+  channelId: string; service: string; text: string; mode: "schedule" | "queue" | "draft"; dueAt?: string; igType?: "post" | "reel" | "story"; notify?: boolean;
+  media?: Media[]; // in order; two or more on a feed post make a carousel
+  coverMs?: number; // reels: the moment of the video shown as its cover (Buffer takes a frame, never an image of your own)
+  coverUrl?: string; // reels sent as a reminder: an image the person publishing sets by hand in Instagram
+};
 /** Video or image: the uploader's own file type when known (UploadThing links have no extension), else guessed from the link. */
 export const kindOf = (url: string, kind?: "image" | "video") => kind ?? (VIDEO.test(url) ? "video" : "image");
 const VIDEO = /\.(mp4|mov|webm)(\?|$)/i, IG_LIMIT = 2196; // Instagram caption limit per Buffer's character-limits guide
+export const MAX_MEDIA = 10; // Instagram's carousel limit
+const HTTPS = /^https:\/\/\S+$/;
+const isReel = (p: NewPost) => p.service === "instagram" && p.igType === "reel";
 
 /** Returns what is wrong with a new post (shown to the person), or null. */
 export function checkNewPost(p: NewPost, now = Date.now()): string | null {
+  const media = p.media ?? [];
   if (!p.channelId) return "Pick a channel.";
-  if (p.mediaUrl && !/^https:\/\/\S+$/.test(p.mediaUrl)) return "The media link must be a public https address.";
-  if (p.service === "instagram" && !p.mediaUrl) return "Instagram posts need an image or video.";
-  if (!p.text.trim() && !p.mediaUrl) return "Write a caption or add media.";
+  if (media.some((m) => !HTTPS.test(m.url))) return "Every media link must be a public https address.";
+  if (media.length > MAX_MEDIA) return `A post can have at most ${MAX_MEDIA} images or videos.`;
+  if (p.service === "instagram" && !media.length) return "Instagram posts need an image or video.";
+  if (isReel(p) && (media.length !== 1 || kindOf(media[0].url, media[0].kind) !== "video")) return "A reel needs exactly one video.";
+  if (p.service === "instagram" && p.igType === "story" && media.length !== 1) return "A story takes exactly one image or video.";
+  if (!p.text.trim() && !media.length) return "Write a caption or add media.";
   if (p.service === "instagram" && p.text.length > IG_LIMIT) return `Instagram captions can be at most ${IG_LIMIT} characters (this one is ${p.text.length}).`;
+  if (isReel(p) && p.coverUrl && !HTTPS.test(p.coverUrl)) return "The cover image link must be a public https address.";
+  if (isReel(p) && p.coverUrl && !p.notify) return "An uploaded cover image can't be published automatically. Tick the reminder option, or remove the image and pick a frame.";
   if (p.mode === "schedule" && (!p.dueAt || Date.parse(p.dueAt) < now + 60_000)) return "Pick a date and time in the future.";
   return null;
 }
 const result = `{ ... on PostActionSuccess { post { id } } ... on MutationError { message } }`;
 export function createPostBody(p: NewPost): string {
-  return `createPost(input: { channelId: ${q(p.channelId)} text: ${q(p.text)} schedulingType: ${p.notify ? "notification" : "automatic"} mode: ${p.dueAt ? "customScheduled" : "addToQueue"}${p.dueAt ? ` dueAt: ${q(p.dueAt)}` : ""}${p.mode === "draft" ? " saveToDraft: true" : ""}${p.mediaUrl ? ` assets: [{ ${kindOf(p.mediaUrl, p.mediaKind)}: { url: ${q(p.mediaUrl)} } }]` : ""}${p.service === "instagram" ? ` metadata: { instagram: { type: ${p.igType ?? "post"} shouldShareToFeed: true } }` : ""} }) ${result}`;
+  const reel = isReel(p), offset = reel && Number.isInteger(p.coverMs) && p.coverMs! >= 0 ? p.coverMs : undefined;
+  const assets = (p.media ?? []).map((m) => { const k = kindOf(m.url, m.kind); return `{ ${k}: { url: ${q(m.url)}${k === "video" && offset !== undefined ? ` metadata: { thumbnailOffset: ${offset} }` : ""} } }`; });
+  // a reminder post shows these fields to whoever publishes it, so that is where the cover image's link goes
+  const cover = reel && p.notify && p.coverUrl ? ` stickerFields: { other: ${q(`Cover image: ${p.coverUrl}`)} }` : "";
+  return `createPost(input: { channelId: ${q(p.channelId)} text: ${q(p.text)} schedulingType: ${p.notify ? "notification" : "automatic"} mode: ${p.dueAt ? "customScheduled" : "addToQueue"}${p.dueAt ? ` dueAt: ${q(p.dueAt)}` : ""}${p.mode === "draft" ? " saveToDraft: true" : ""}${assets.length ? ` assets: [${assets.join(" ")}]` : ""}${p.service === "instagram" ? ` metadata: { instagram: { type: ${p.igType ?? "post"} shouldShareToFeed: true${cover} } }` : ""} }) ${result}`;
 }
 export const moveBody = (id: string, to: "draft" | "scheduled", dueAt?: string) => `editPost(input: { id: ${q(id)} ${to === "draft" ? "saveToDraft: true" : `mode: customScheduled dueAt: ${q(dueAt ?? "")} saveToDraft: false`} }) ${result}`;
 export const rescheduleBody = (id: string, dueAt: string) => `editPost(input: { id: ${q(id)} mode: customScheduled dueAt: ${q(dueAt)} }) ${result}`;

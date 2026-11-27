@@ -38,7 +38,10 @@ export async function createPost(f: FormData): Promise<Result> {
   const mode = (["schedule", "queue", "draft"] as const).find((m) => m === f.get("mode")) ?? "schedule";
   const date = String(f.get("date") ?? ""), time = String(f.get("time") ?? "") || "10:00";
   const dueAt = mode === "queue" ? undefined : istToUtc(date, time) ?? undefined; // a draft keeps its date if one was given
-  const post: NewPost = { channelId, service: l.service, text: String(f.get("text") ?? "").trim(), mode, dueAt, mediaUrl: String(f.get("media") ?? "").trim() || undefined, mediaKind: (["image", "video"] as const).find((k) => k === f.get("mediaKind")), igType: (["post", "reel", "story"] as const).find((t) => t === f.get("igType")), notify: f.get("notify") === "on" };
+  const kinds = f.getAll("mediaKind"); // one per media link, in the same order
+  const media = f.getAll("media").map((u, i) => ({ url: String(u).trim(), kind: (["image", "video"] as const).find((k) => k === kinds[i]) })).filter((m) => m.url);
+  const cover = String(f.get("coverMs") ?? "");
+  const post: NewPost = { channelId, service: l.service, text: String(f.get("text") ?? "").trim(), mode, dueAt, media, igType: (["post", "reel", "story"] as const).find((t) => t === f.get("igType")), notify: f.get("notify") === "on", coverMs: /^\d{1,8}$/.test(cover) ? Number(cover) : undefined, coverUrl: String(f.get("coverUrl") ?? "").trim() || undefined };
   const bad = checkNewPost(post);
   if (bad) { console.error("[planner] refused:", bad); return { ok: false, message: bad }; }
   try { await mutate(createPostBody(post), l.key); } catch (e) { return fail(e); }
