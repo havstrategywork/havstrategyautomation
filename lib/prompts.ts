@@ -1,11 +1,12 @@
 // The scheduled Claude Cowork prompts. Single source: the /automation page renders them with the real URL + key filled in.
 // Self-contained on purpose (a scheduled Cowork task may not see this repo), so the key rules are repeated here.
 
-export type Kind = "briefs" | "outreach" | "guidelines" | "mail";
+export type Kind = "briefs" | "outreach" | "guidelines" | "mail" | "reports";
 export const SCHEDULES: Record<Kind, { title: string; when: string; what: string }> = {
   briefs: { title: "1. Briefs: find creators", when: "Every 30 minutes, 9:00–21:00", what: "Picks up briefs from the New brief chat, hunts and scores creators, posts a shortlist for you to approve." },
   outreach: { title: "2. Outreach: replies & sends", when: "Every hour, 9:00–22:00", what: "One Instagram pass: logs creator replies, negotiates within budget and escalates, THEN sends due first DMs and follow-ups (10 per run, max 75 a day)." },
   mail: { title: "4. Email agent: report to the dashboard", when: "Your existing email schedule (replace its prompt with this one)", what: "The full email agent prompt, now reporting each run to the Email page (negotiations, follow-ups, closed deals). No Instagram, no run lock." },
+  reports: { title: "5. Client reports: weekly & monthly", when: "Weekly: Mondays 9:00. Monthly: the 1st, 9:00. Run it in Claude Code (needs Claude in Chrome). It asks you for blockers and context first", what: "Builds each client's weekly or monthly PDF from the outreach numbers here plus Meta Business Suite insights. Client-facing and read-only: sends nothing to clients." },
   guidelines: { title: "3. Guidelines emails", when: "Every hour, 9:00–21:00", what: "Emails the saved guidelines and terms to every creator a client approved (the answers are uploaded by a human on the Campaigns page). No Instagram or Chrome needed." },
 };
 
@@ -239,4 +240,101 @@ END OF RUN: Produce a report in the doc's Section 10 format: total reviewed per 
 Work the ONE mailbox chosen in #4 (max 90 real threads, with a dashboard checkpoint every 15), then make the final dashboard report (#6a), then produce a SHORT final report (a few lines; counts, items for the founder, errors) as your final message.`;
 }
 
-export const PROMPTS: Record<Kind, (url: string, key: string) => string> = { briefs: briefsPrompt, outreach: outreachPrompt, guidelines: guidelinesPrompt, mail: mailPrompt };
+// The weekly/monthly client report. Run from Claude Code with Claude in Chrome (Meta Business Suite). Self-contained: no repo files needed.
+// No Instagram and no /api/run/start here: the run is read-only, so the Instagram lock and pause switch do not apply.
+export function reportsPrompt(url: string, key: string) {
+  const app = url || "<APP_URL>", k = key || "<API_KEY>";
+  return `You are building the weekly or monthly client reports for HavStrategy. The finished PDF is handed to the CLIENT by a person on our team, so write for the client, not for us. Do one pass, then stop.
+
+Run: <weekly | monthly> report for <client names, comma separated, or "all">
+Blockers: <per client, e.g. "ORFA: waiting on product photos since 20 Nov (client). Veda Luxe: none". Write "none" for a client with no blockers>
+Context: <optional: launches, campaigns, offers, events or changes this period>
+Goals: <optional: targets for the period, e.g. "Veda Luxe: 5,000 reach, 10 creators signed">
+Addressed to / prepared by: <optional>
+
+App: ${app}
+API key: ${k}
+Call every /api endpoint with the headers  Authorization: Bearer <API key>  and  Content-Type: application/json.
+If you have no HTTP tool: open ONE Chrome tab at the app URL and run fetch() from that tab with relative paths.
+
+Rules for the whole run
+1. Never invent a number, handle, date, cause or reason. If a figure can't be read, show "–" and say why in a footnote. A client with no Meta asset gets an outreach-only report with one line saying so.
+2. This run is read-only. Do not send DMs or messages, do not post, do not change anything in Meta, do not call POST/PATCH endpoints, do not touch the run lock or the pause. Never email or share a report; only produce the files.
+3. Do not enter or work around passkeys, 2FA or login prompts. If Meta (or Instagram) asks you to confirm identity or log in, stop that part, finish the rest, and list it under "Not collected" in your final message.
+4. Do not open Instagram threads. Outreach numbers come from the API only.
+5. The report is CLIENT-FACING. Professional, factual, constructive; no blame. Never put in a report: rate ceilings or budgets, creators' phone numbers, emails or WhatsApp numbers, raw error text, or internal words (app, API, queue, daily cap, paused, run lock, scheduler, automation, Cowork). Creator handles are public and fine; paraphrase what creators said instead of copying long messages.
+6. Internal findings stay out of the report. If the data shows something that is about us and not the client (the app is paused, replies not yet logged, the DM wording doesn't match the offer, a batch failed, a mistake of ours), do NOT print it. Ask the person how to word it for the client, or leave it out, and put it under "For the team" in your final message.
+7. There is NO "Needed from you" section. The report goes to the client, so a "needed from you" box would be asking them for things. Use "Blockers" instead (see step 6).
+
+Step 1: Ask before you collect anything
+Check what the person already gave you in the Run block above. A line still in <angle brackets>, or missing, was NOT given. Ask ONE message for everything missing (use the AskUserQuestion tool if you have it, otherwise plain chat), per client:
+ a. Blockers: is anything holding up the work this period? For each one: what it is, who owns it (HavStrategy or the client), since when, and what unblocks it. "None" is a valid answer. Required for every client in the run.
+ b. Context the numbers can't show: campaigns or launches, content shipped, delayed or rejected, offer changes, events, approvals still pending.
+ c. Goals or targets for the period. With none, leave the "vs goal" parts out.
+ d. Anything to leave out or to stress; who the report is addressed to and who it is prepared by.
+ e. Which clients and which dates, if "all" or the period is unclear.
+Wait for the answers before going on. If nobody can answer (an unattended run), do not invent: build the report without those parts, show no Blockers section for that client, and list the unanswered questions in your final message.
+A Blockers entry appears in a report ONLY if the person gave it (in the Run block or in an answer). Never infer a blocker from the data.
+
+Step 2: Pick the period
+- Weekly: the 7 days ending yesterday, India time (e.g. today Fri 27 Nov -> Fri 20 Nov to Thu 26 Nov). Compare with the 7 days before.
+- Monthly: the previous calendar month. Compare with the month before.
+- Outreach uses India days. Meta uses Pacific-time days and is 1-2 days behind. Print both ranges on the report ("Outreach 21-27 Nov IST, social 19-25 Nov Pacific").
+
+Step 3: Outreach data (our app)
+For each client: GET ${app}/api/report?client=<name>&from=<YYYY-MM-DD>&to=<YYYY-MM-DD>.
+It returns week (this period) and previous (the period before): firstDms, followUps, failed, repliesIn, creatorsReplied, ourReplies, agreed, declined; plus days[] (per day), totals (onList, firstDmsSent, everReplied, replyRate, statuses, failedReasons, queuedFollowUps, needsHuman), replied[] (handle, followers, status, first reply text), deals[], offer, and loggingGap.
+- If loggingGap.paused is set, or lastRun is more than a day old, reply numbers may be behind reality. That is an internal finding (rule 6): ask the person whether to word it as "reply numbers are still being collected" or to hold the report, and mention it under "For the team".
+- Reply rate = totals.everReplied / totals.firstDmsSent. Say "too early to judge" when the first DMs are under 2 days old.
+- Group failedReasons into plain words (already in conversation with us / messages closed / profile unavailable). Never show raw error strings.
+- Read client.offer only to check the report doesn't contradict it. If replies show the offer is unclear (several creators asking the same question, or asking for payment on a barter offer), that is a finding for the team (rule 6): ask the person how to present it.
+
+Step 4: Social data (Meta Business Suite, via Claude in Chrome)
+Load the Chrome tools in one ToolSearch call. If a chrome-browser skill is available, read it first. Open a new tab (don't reuse the person's), and close it when done.
+1. Go to https://business.facebook.com/latest/insights/results. Open the asset switcher (top left), type the brand name in "Search for a business asset". No result = this brand has no Meta data in this login: skip its social page. Don't open Business Settings (it needs a passkey).
+2. Date range: the picker is disabled on Overview, so use Results and Content. Presets: Last 7 days, Last week, Last 28 days, Last month, Custom. Weekly: Last 7 days (or Custom). Monthly: Last month. Selecting a preset applies at once, and the URL carries time_range. Tick Compare if available.
+3. Results page, once with the selector on Facebook and once on Instagram (selector top right, or add &platform=Instagram to the URL): read Views, Viewers (Facebook) / Reach (Instagram), Content interactions, Link clicks, Visits, Follows, and the daily series.
+   - get_page_text gives the numbers but not whether a change is up or down. Take one screenshot of each platform and read the arrows. Never guess a direction.
+   - On Instagram the Views card is a combined Facebook + Instagram figure (it prints the split). Use each platform's own Views from its own view, and footnote that views are not comparable across platforms.
+4. Content page (left nav > Content, same range): the table lists every post, reel and story with Views, Reach, Viewers, Interactions, Likes, Comments, Shares, Saves, Link clicks, Replies, Follows, and more. A "--" means Meta has no figure; keep it as "–". The list can include posts newer than the range: label those "too new for full numbers".
+5. Home page (/latest/home): total followers (shown as "N followers" for Facebook, then Instagram), open comments and messages, last boosted ad (spend, viewers, results).
+6. Audience demographics: only if the Audience tab loads without a login prompt. If not, leave demographics out.
+
+Step 5: Ask about what the data shows
+With both sources read, find the biggest movements the numbers cannot explain: one day holding most of the views, a metric that rose or fell by more than 40%, a post that did far better or worse than the rest, many creators asking the same question. Ask the person, in ONE message and at most 3 questions, what caused each. Use the answer as the cause, in client wording. If it isn't answered, state the movement without a cause. Never guess a cause.
+
+Step 6: Build the report
+Weekly = per client, page 1 Creator outreach, page 2 Social performance (Meta); each exactly 1 A4 page.
+Monthly = per client, 4 pages:
+ - Page 1: Executive summary (2-3 sentences, then Highlight and Concern), Scorecard (this month vs last month, plus vs goal only if goals were given), Trend by week (views, summed from the daily values).
+ - Page 2: Content performance: By channel (Facebook / Instagram), By format (reel, photo, story, other), Top 5 posts by interactions.
+ - Page 3: Campaigns this month (only if the person gave any), Key learnings, Next month's plan, Blockers, Notes.
+ - Page 4: Creator outreach for the month.
+Delete a section that has no data instead of leaving a placeholder.
+
+Outreach page: "This week in 3 lines" (DMs sent, reply rate, the one point that matters most) > 6 KPI cards (first DMs, creators replied, interested or asking questions, want payment, declined, not delivered; add follow-ups when any went out) > day-by-day table (weekly: only days with activity, plus a total row) > "Who replied" table (handle, outcome, what they said in your words; fold into counts if more than 15) > What worked / What didn't > Next week (follow-ups coming, day 3 and day 6 after the first DM, from queuedFollowUps) and Blockers.
+Social page: summary (3 lines) > table Metric | Facebook | vs previous | Instagram | vs previous (Views, Viewers/Reach, Interactions, Link clicks, Visits, New follows, Followers in total) > one line on the daily pattern if one day dominates > Content table > What worked / What didn't > Next week and Blockers. Footnote the Pacific-time and combined-views caveats.
+
+Blockers box (replaces "Needed from you"): a small table: Blocker | Owner (HavStrategy or client) | What unblocks it | Since. One row per blocker the person gave you, worded politely and specifically ("Waiting on: product photos for the November collection, since 20 Nov"). If a client has no blockers, leave the box out. Do not invent one.
+
+Colour: green "up" and red "down" follow whether the change is good, not the arrow. A drop in link clicks is red; a drop in unfollows would be green.
+Everything the reader can't act on or doesn't need goes.
+
+Design (use exactly this so every report looks the same): A4 portrait, 14mm side margins, font Segoe UI or system sans 13px, text #16161d, muted #6b6b78, lines #e3e3e8, soft panels #f5f5f8, accent #5b4ef5, good #0f8a4a, bad #c2261d. Header: small caps "HAVSTRATEGY" in the accent colour, the title ("Weekly report" / "Monthly report") in 24px bold, a 3px accent rule below; on the right the client name in bold, the period(s), and "Prepared by". Section titles: 13px uppercase letter-spaced muted. Summary: soft panel with a 4px accent left border. KPI cards: 3 per row, 1px border, 10px radius, small uppercase label, 19-22px bold value, one muted line. Tables: compact, small uppercase muted header on a soft background, thin row lines, numbers right-aligned. Boxes: "What worked" green top border, "What didn't" red top border, "Next week" accent top border, "Blockers" plain. Footer on every page: "Havstrategy · Client · Weekly report" on the left and the source ("Source: Meta Business Suite and Havstrategy outreach records") on the right, small and muted, with a thin line above.
+Keep each page to one A4 page. After building, render it and check: no text cut off, nothing under the footer. Shorten wording or drop the least useful row until it fits.
+
+Step 7: Export
+- Write one HTML file for the run with one section per page, and show only one client's pages at a time through a #client-slug hash and a tiny script. Save the HTML and the PDFs in the folder you are working in. Names: <YYYY-MM-DD>-<weekly|monthly>.html and <Client>-<weekly|monthly>-<YYYY-MM-DD>.pdf.
+- Export one PDF per client with the browser's print-to-PDF (headless Edge or Chrome: no header/footer, background graphics on, A4, zero margins).
+- Check the page count and look at each page image before you finish.
+
+Step 8: Final message (short)
+- The PDFs (names) and what each contains.
+- The two period ranges used, and any date or lag caveat.
+- Questions you asked and which are still unanswered.
+- Not collected: anything missing and why (no Meta asset, login or passkey prompt, "--" metrics).
+- For the team (NOT in the PDF): the internal findings from rule 6, one line each.
+- Don't paste the report text again.`;
+}
+
+export const PROMPTS: Record<Kind, (url: string, key: string) => string> = { briefs: briefsPrompt, outreach: outreachPrompt, guidelines: guidelinesPrompt, mail: mailPrompt, reports: reportsPrompt };
