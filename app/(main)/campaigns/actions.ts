@@ -8,6 +8,7 @@ import { currentUser } from "@/lib/session";
 import { editBrief, queueShortlist, submitBrief } from "@/lib/briefs";
 import { docIdFromUrl, type BriefInput } from "@/lib/brief";
 import { upsertClient } from "@/lib/clients";
+import { isPriority } from "@/lib/priority";
 import { render } from "@/lib/template";
 import { applyAnswers, createBatch, createLocalBatch, deadlineVars, markShared, sendFollowEmail, sendGuidelines, type FollowEmail } from "@/lib/deals";
 import { daysLabel, daysLeft } from "@/lib/dealrules";
@@ -170,6 +171,15 @@ export async function sendDeadlineAction(fd: FormData) { await sendFollow(fd, "d
 export async function findMore(fd: FormData) {
   await requireUser();
   await (await db()).briefs.updateOne({ _id: idOf(fd), status: { $in: ["approved", "awaiting_approval", "failed"] } }, { $set: { status: "new", note: "More creators requested.", updatedAt: new Date() } });
+  revalidatePath("/campaigns");
+}
+
+/** Campaign priority lives on the campaign's client: high ones get their DMs, follow-ups and replies handed out first. `id` is the client id. */
+export async function setPriority(fd: FormData) {
+  await requireUser();
+  const p = String(fd.get("priority") ?? "");
+  if (!isPriority(p)) throw new Error("bad priority");
+  await (await db()).clients.updateOne({ _id: idOf(fd) }, { $set: { priority: p } });
   revalidatePath("/campaigns");
 }
 

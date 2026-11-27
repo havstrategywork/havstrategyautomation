@@ -19,7 +19,8 @@ All `/api/*` calls need `Authorization: Bearer $API_KEY` (from `.env.local`). Ba
 - `POST /api/outreach/:id/sent` `{ok:true}` or `{ok:false,error}`: report the result. Returns 429 once the cap is hit; stop immediately.
 - `GET /api/briefs?status=new`: campaign briefs from the dashboard chat (with `clientDoc`). `POST /api/briefs/:id/claim` takes one (409 = taken).
   `POST /api/briefs/:id/shortlist {items:[{creatorId,tier,score,why}]}` proposes creators (moves it to awaiting approval; if the client has a saved `dmTemplate` and `AUTO_APPROVE` isn't `off` the server then approves it itself, reply `autoApproved:true`; otherwise it pings the human).
-  `PATCH /api/briefs/:id {draftMessage?, note?, status?:"failed"}`. Approving, "find more" and archiving are dashboard-only (a human).
+  `PATCH /api/briefs/:id {draftMessage?, note?, status?:"failed"}`.
+- **Campaign priority** (`high` | `normal` default | `low`, stored on the client as `priority`, set with the dropdown on each Campaigns card or `POST /api/clients {name, priority}`): it only changes ORDER. `/api/outreach/next` hands out high-priority campaigns' DMs and follow-ups first (then follow-ups before first DMs), so under the daily cap they go first; `/api/conversations?view=pending`, `/api/messages/next` list high-priority threads/replies first, and `view=watch` reads live chats first, then high-priority ones. Each item carries `priority`. Work through the lists in the order given. Nothing is skipped and caps are unchanged. Approving, "find more" and archiving are dashboard-only (a human).
 
 ## Hunting new creators
 1. `GET /api/clients` to see what's wanted.

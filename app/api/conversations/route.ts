@@ -1,6 +1,7 @@
 import { unauthorized } from "@/lib/auth";
 import { db, igAllowed } from "@/lib/db";
-import { clientFor, threads } from "@/lib/threads";
+import { PRIORITIES } from "@/lib/priority";
+import { clientFor, creatorRank, priorityRanks, threads } from "@/lib/threads";
 
 /**
  * ?view=watch   which creators' chats Claude should read this run (each has an igUrl: open the profile and click Message, never search the inbox). It must ignore every other thread.
@@ -13,12 +14,13 @@ export async function GET(req: Request) {
 
   if (view === "watch") {
     const { creators } = await db();
+    const ranks = await priorityRanks();
     const limit = Math.min(50, Number(new URL(req.url).searchParams.get("limit")) || 15);
     const live = (s?: string) => s === "Replied" || s === "Negotiating";
     // ponytail: once a thread is escalated or the deal is settled, a human owns it and Claude has nothing left to do there, so it drops out of the watch rotation
     // (a reply typed in Instagram after that point won't be logged). Re-add it if that gap matters.
     const rows = (await creators.find({ igHandle: { $exists: true }, $or: [{ dmSentAt: { $exists: true } }, { status: { $in: ["DM Sent", "Replied", "Negotiating"] } }], status: { $nin: ["Declined", "Agreed"] }, needsHuman: { $exists: false }, undeliverable: { $exists: false } }).toArray())
-      .sort((a, b) => +live(b.status) - +live(a.status) || +(a.watchedAt ?? a.dmSentAt ?? 0) - +(b.watchedAt ?? b.dmSentAt ?? 0));
+      .sort((a, b) => +live(b.status) - +live(a.status) || creatorRank(a, ranks) - creatorRank(b, ranks) || +(a.watchedAt ?? a.dmSentAt ?? 0) - +(b.watchedAt ?? b.dmSentAt ?? 0)); // live chats first, then high-priority campaigns
     const { messages } = await db();
     const out = [];
     for (const c of rows.filter((c) => igAllowed(c.igHandle))) {
@@ -31,17 +33,21 @@ export async function GET(req: Request) {
     return Response.json(out);
   }
 
-  const out = [];
+  const out: (Record<string, unknown> & { rank: number })[] = [];
+  const ranks = await priorityRanks();
   for (const { creator: c, last, thread } of await threads()) {
     // a thread with human guidance is pending even if our last message was a queued reply that got cancelled by the escalation
     if ((last.direction !== "in" && !c.guidance) || c.needsHuman || c.status === "Declined" || !igAllowed(c.igHandle)) continue;
     const cl = await clientFor(c);
+    const rank = creatorRank(c, ranks);
     out.push({
+      rank, priority: PRIORITIES[rank],
       creatorId: c._id, name: c.name, igHandle: c.igHandle, status: c.status, quotedRate: c.quotedRate, agreedRate: c.agreedRate,
       ...(c.guidance && { guidance: c.guidance }), // the human's instruction for this thread: follow it (budget rules still apply). Absent = you decide.
       client: cl && { id: cl._id, name: cl.name, offer: cl.offer, notes: cl.notes, maxRate: cl.maxRate, tierRates: cl.tierRates },
       thread: thread.map((m) => ({ from: m.direction === "in" ? "creator" : m.by === "human" ? "human" : "claude", text: m.text, at: m.at })),
     });
   }
+  out.sort((a, b) => a.rank - b.rank); // stable: high-priority campaigns' threads first, otherwise the order from threads()
   return Response.json(out);
 }

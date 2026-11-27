@@ -2,6 +2,7 @@
 import { db } from "./db";
 import { TIERS } from "./fields";
 import { cleanMoney } from "./money";
+import { isPriority, PRIORITIES } from "./priority";
 
 const list = (v: unknown) => [].concat((v ?? []) as never).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -20,6 +21,7 @@ export async function upsertClient(b: Record<string, any>) { // eslint-disable-l
     tr[t] = cleanMoney(v, `tierRates.${t}`);
   }
   if (b.notes != null) set.notes = String(b.notes);
+  if (b.priority != null) { const p = String(b.priority).toLowerCase(); if (!isPriority(p)) throw new Error(`priority must be ${PRIORITIES.join(", ")}`); set.priority = p; }
   for (const k of ["offer", "dmTemplate", "followUpTemplate", "guidelinesTemplate", "scriptReminderTemplate", "deadlineTemplate", "contentDeadline", "sheetUrl", "guidelinesFileUrl", "guidelinesFileName", "termsDocId"]) if (b[k] != null) set[k] = String(b[k]);
   for (const [k, v] of Object.entries(b.weights ?? {})) set[`weights.${k}`] = Number(v);
 

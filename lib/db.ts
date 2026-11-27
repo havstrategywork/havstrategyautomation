@@ -66,6 +66,7 @@ export type Client = {
   termsDocId?: string; // master Terms Google Doc id ({{name}}/{{brand}} placeholders); merged + exported to a personalized PDF per creator
   followUpTemplate?: string; // optional nudges, texts separated by a "---" line; text N goes out on day FOLLOWUP_SCHEDULE[N-1] after the first DM while the creator has not replied
   offer?: string; // the brief Claude answers from: product, deliverables, terms, what we can/can't promise
+  priority?: "high" | "normal" | "low"; // missing = normal. High campaigns' DMs, follow-ups and replies are handed out first (lib/priority.ts)
   minFollowers: number;
   maxFollowers: number;
   weights: { niche: number; followers: number; engagement: number; collab: number; location?: number };

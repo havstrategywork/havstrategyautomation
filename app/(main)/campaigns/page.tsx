@@ -5,8 +5,9 @@ import { money, tierRange } from "@/lib/brief";
 import { tierOf } from "@/lib/fields";
 import { Avatar, Badge, PageHead, Pagination, Score, ago } from "@/components/ui";
 import BriefChat from "@/components/BriefChat";
+import Select from "@/components/mui/Select";
 import { readyDeals } from "@/lib/deals";
-import { approveBrief, archiveBrief, createLocalBatchAction, createSheetAction, deleteBrief, findMore, markSharedAction, saveFollowEmailsAction, saveGuidelinesAction, sendDeadlineAction, sendGuidelinesAction, sendScriptReminderAction, uploadAnswersAction } from "./actions";
+import { approveBrief, archiveBrief, setPriority, createLocalBatchAction, createSheetAction, deleteBrief, findMore, markSharedAction, saveFollowEmailsAction, saveGuidelinesAction, sendDeadlineAction, sendGuidelinesAction, sendScriptReminderAction, uploadAnswersAction } from "./actions";
 import { daysLabel, daysLeft } from "@/lib/dealrules";
 import { DeleteCampaignButton } from "./DeleteCampaignButton";
 import { GuidelinesUpload } from "./GuidelinesUpload";
@@ -178,6 +179,13 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
             <div className="row spread">
               <div><h2 style={{ margin: 0 }}>{b.client}</h2><div className="small muted">{b.products.map((p) => p.name).join(" · ")} · started {ago(b.createdAt)}{b.runs ? ` · ${b.runs} Cowork run${b.runs === 1 ? "" : "s"}` : ""}</div></div>
               <div className="row" style={{ gap: ".5rem" }}>
+                {b.clientId && b.status !== "archived" && (
+                  <form action={setPriority} className="row" style={{ gap: ".35rem" }} title="High-priority campaigns get their DMs, follow-ups and replies sent first">
+                    <input type="hidden" name="id" value={String(b.clientId)} />
+                    <Select name="priority" compact ariaLabel="Campaign priority" defaultValue={cl?.priority ?? "normal"} options={[{ value: "high", label: "High priority" }, { value: "normal", label: "Normal priority" }, { value: "low", label: "Low priority" }]} />
+                    <button className="ghost small-btn">Set</button>
+                  </form>
+                )}
                 {b.shortlist.length > 0 && <a className="btn ghost small-btn" href={`/campaigns/export/${b._id}`}>Export .csv</a>}
                 {b.status !== "archived" && (
                   <BriefChat edit={{ id: String(b._id), data: { step: 0, client: b.client, products: b.products.length ? b.products : [{ name: "", about: "" }], rows: b.rows.length ? b.rows : [{ tier: "Micro", count: 2, budget: 10000 }], currency: b.currency, other: b.other, message: b.message, followUp: b.followUp, sheetUrl: b.sheetUrl ?? "" } }} />

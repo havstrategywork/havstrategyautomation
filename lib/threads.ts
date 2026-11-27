@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import { db, igAllowed, type Creator } from "./db";
 import { capFor, type Money } from "./money";
+import { rankOf } from "./priority";
 
 export const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -29,6 +30,14 @@ export async function clientFor(c: Creator) {
   const last = c.suggestedVia?.at(-1);
   return last ? (await db()).clients.findOne({ _id: last }) : null;
 }
+
+/** clientId -> priority rank (0 high, 1 normal, 2 low) for every client, read once so a route can sort many rows without a query each. */
+export async function priorityRanks() {
+  const cs = await (await db()).clients.find({}).project<{ _id: ObjectId; priority?: string }>({ priority: 1 }).toArray();
+  return new Map(cs.map((c) => [String(c._id), rankOf(c.priority)]));
+}
+/** A creator's priority is that of the campaign they were most recently suggested to (the same client a conversation is about, see clientFor). */
+export const creatorRank = (c: Pick<Creator, "suggestedVia">, ranks: Map<string, number>) => { const id = c.suggestedVia?.at(-1); return (id && ranks.get(String(id))) ?? 1; };
 
 /** Lowest budget ceiling among the creator's clients (conservative), if any has one. ponytail: compares within the first ceiling's currency only. */
 export async function ceilingFor(c: Creator): Promise<Money | undefined> {
