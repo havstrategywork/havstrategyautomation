@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 const PAGE_SIZE = 15;
 const FILTERS: [string, string, MailStatus[]][] = [
   ["all", "All", []], ["negotiating", "Negotiating", ["negotiating"]], ["follow_up", "Follow-ups", ["follow_up"]], ["closed", "Closed", ["closed"]],
-  ["founder_review", "Founder review", ["founder_review"]], ["other", "Other", ["awaiting_sender", "draft", "forward_draft", "no_action"]],
+  ["founder_review", "Founder review", ["founder_review"]], ["other", "Other", ["awaiting_sender", "draft", "forward_draft", "no_action", "lost"]],
 ];
 const inboxUrl = (mailbox: string, url?: string) => url ?? MAILBOXES[mailbox as Mailbox]?.url;
 

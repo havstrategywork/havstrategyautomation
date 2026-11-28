@@ -19,6 +19,8 @@ export async function POST(req: Request) {
     if (!(mailbox in MAILBOXES)) { errors.push({ index: i, error: `mailbox must be ${Object.keys(MAILBOXES).join(" or ")}` }); continue; }
     if (!email?.includes("@")) { errors.push({ index: i, error: "email (the sender's address) is required" }); continue; }
     if (t.status !== undefined && !MAIL_STATUSES.includes(t.status as MailStatus)) { errors.push({ index: i, error: `status must be one of ${MAIL_STATUSES.join(", ")}` }); continue; }
+    // A "closed" row is a deal: it needs the agreed price. No price = not closed (use negotiating / awaiting_sender / lost).
+    if (t.status === "closed" && !text(t.price, 60)) { errors.push({ index: i, error: "closed needs the agreed price; if no price was confirmed by the sender use negotiating, awaiting_sender, founder_review or lost" }); continue; }
     const url = text(t.url, 500);
     const set = Object.fromEntries(Object.entries({
       name: text(t.name, 120), category: text(t.category, 80), status: t.status, price: text(t.price, 60), note: text(t.note, 500),

@@ -47,6 +47,10 @@ The job: turn ONE new campaign brief into a shortlist. You never queue or send D
 5. Candidates. For each row the target is 3 x count (not everyone replies). POST /api/search {"clientId": "<clientId>", "want": 100}.
    From "results" keep creators that: have an igHandle, alreadyContacted is false, status is not "Declined", are not in the brief's shortlist,
    and whose "tier" is one of the brief's rows. Respect anything in "other" (gender, age, location, language, brands to avoid...).
+   The search IGNORES clientDoc.notes, so read them yourself: every must-have (style, audience, region, persona), every REJECTED handle or list, and any
+   reference creators. Drop rejected handles and lookalikes of what the client rejected. Before step 7, open each candidate's profile and keep only those
+   whose content really meets the must-haves (a high score alone is not enough; if you cannot verify a must-have, leave the creator out).
+   If notes, follower range and budgets contradict each other, say so in the brief's note instead of guessing.
 6. Hunt for every tier that is still short of its target. Prefer Meta's Creator Marketing Hub (business.facebook.com/creator_marketing_hub/creator_discovery,
    via Chrome, logged into the brand's Meta Business account) when that tab is available: filter by category and follower range, read followers/engagement
    straight off each card (real Meta numbers, not guesses), open the card for the IG handle. Fall back to web search / open Chrome for whatever it doesn't
@@ -223,7 +227,8 @@ Each thread you handled (and each older open thread where you sent a follow-up) 
 Statuses (pick the one that is true after this run):
   negotiating     price or terms are being discussed back and forth
   follow_up       we are waiting and a follow-up is due or was just prepared
-  closed          both sides confirmed one price (per #7 you wrote no reply; the founder confirms)
+  closed          ONLY when the sender's own latest message explicitly accepts ONE specific amount (e.g. "ok $120 works"), "price" is required, and you wrote no reply (per #7). NOT closed: a reply we sent, a first-offer template, "ok"/"thanks" after our final price, silence, or a conversation that simply ended. The server rejects "closed" without "price".
+  lost            the sender declined, walked away, or the negotiation ended with no agreed price (note why)
   founder_review  Founder Review: starred, needs the founder
   awaiting_sender we replied and are waiting for them
   forward_draft   a BD or HR forward is drafted, not sent
@@ -231,7 +236,7 @@ Statuses (pick the one that is true after this run):
 Rules: set "followUpSent": true ONLY when a follow-up email was actually sent and confirmed in the Sent folder; otherwise leave it out. Include only what you verified and leave out any field you don't know. Never guess an email address. Never mark a draft as sent. The same mailbox + sender + subject updates the same row, so re-sending is safe. "run.note" is one line (reviewed per mailbox, replies sent, BD/HR forward drafts, remaining unread, errors); use "ok": false if the run stopped early. On checkpoint reports the "run" object is optional; send it only on the final report. A reply of {"saved": n, "errors": []} means it worked; if it fails or has errors, say so in the final report and retry at most once.
 To see what is still open before deciding on follow-ups, run fetch("/api/mail/threads", { headers: { "Authorization": "Bearer ${k}" } }).then(r => r.text()) in the same tab. Follow the doc's Section 9 follow-up rules (never repeated follow-ups without an approved schedule; ask the founder if none exists).
 
-7. Closed deals: If a thread shows a closed deal (both sides confirmed one price), write no reply, star the thread, set status Founder Review in the mailbox, and report it to the dashboard with "status": "closed" (include "price" and the sender's "email"). Don't confirm placement/dates/rights/payment.
+7. Closed deals: "closed" means the SENDER explicitly accepted one specific amount in their own message. If we replied (template, counter, "holding firm") the status is awaiting_sender or negotiating, never closed; if the talk ended with no agreed price it is lost. When it really is a closed deal (sender accepted one price), write no reply, star the thread, set status Founder Review in the mailbox, and report it to the dashboard with "status": "closed" (include "price" and the sender's "email"). Don't confirm placement/dates/rights/payment.
 
 8. Commercial pricing (only use if the doc doesn't override): Standard $200/$180 (guest post/link insertion) → Special discount $120/$100 → Final $80/$80 (never go below $80). Accepted industries: Fashion/Skincare/Cosmetics/Lifestyle/Wellness/Homedecore/Luxury. Restricted: Casino/Gambling/other grey niches.
 

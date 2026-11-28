@@ -94,6 +94,44 @@ above `minScore` (40), not only the strong ones: ask the user if they want to co
 
 Never lower `minScore` or drop the niche to make the numbers look better. Never fabricate creators, emails or stats.
 
+## Getting the right creators first time (client direction, changes, vetting)
+`/api/search` scores only the structured fields (niches, related, followers, engagement, collab, location). It **ignores the client's `notes`
+and has no exclusion list**, so style, audience, region, brand fit and "client rejected X" never affect the score. A high score is therefore a
+shortlist, not a verdict: you must vet against the `notes` yourself.
+
+**Before any search, hunt or shortlist:** `GET /api/clients`, read the client's `notes` and `offer` in full, and write down the
+*must-haves* (style, audience, region, persona, product fit), the *rejected* handles/lists, and any *reference creators*.
+
+1. **Latest client direction wins.** When the client changes direction, corrects a list or rejects creators, `POST /api/clients` with
+   `notes` updated (it replaces the field, so resend the full text): keep the old context, add one dated line, e.g.
+   `CLIENT DIRECTION (Nov 2026): <what changed>` and `REJECTED: @a, @b, earlier list (<why>)`. Then fix the structured fields to match
+   (`niches`, `related`, `locations`, `min/maxFollowers`, `weights`) and re-run the search. Never leave `notes` and the fields disagreeing.
+2. **Rejected creators never come back.** Before proposing, queuing or hunting, drop every handle in `REJECTED` and anyone who resembles
+   the rejected set for the same reason (e.g. the client said "not modest luxury": don't re-offer that look). Also skip `Declined` status.
+3. **Vet every candidate against the must-haves** by opening the profile (Creator Marketing Hub card or Chrome), not by score alone:
+   does the grid, bio and audience actually match the notes? Drop failures. Put a one-line `why` per kept creator
+   (what in their content meets the must-have). If you can't verify a must-have, leave them out of the shortlist rather than guess.
+4. **Reference list = benchmark.** If the client shared example creators, store the handles in `notes`, read what they have in common
+   (look, tone, audience region, size) and hunt lookalikes. Don't re-pitch the reference creators themselves unless told to.
+5. **Check the requirement agrees with itself** before spending outreach: follower range vs size mentioned in `notes`, budget set for the
+   tiers you'll actually contact (`tierRates`/`maxRate`), currency, location vs the audience wanted. If they conflict, don't pick silently:
+   state the conflict and the assumption you used at the top of the reply (or ask once if it changes who gets contacted).
+6. **Say what changed.** When a client changes the requirement, tell the user which creators in the current list no longer fit and why,
+   before queuing anything new. Don't DM anyone the old requirement produced if it conflicts with the new one.
+
+### Standing requirements per client (keep in step with the client's `notes`; the database is the source of truth)
+- **ORFA** (luxury fashion, GCC): a **modest luxury** label. Creators must look elevated, elegant and modest in dress and presentation.
+  Core market UAE/GCC/Arab region: prefer Arab/Khaleeji modest-fashion profiles over generic fashion bloggers. Fit and quality beat follower
+  count; the range is 75k-250k. The client already rejected an earlier Indian-creator list (Anjali, Kashish, Vridhi), so never re-offer those
+  or that profile type. A reference blogger list from the client is the benchmark (see rule 4). Offer: 1 Reel + 1 Story + 1 month paid-ad
+  usage rights; nothing else is decided. Never reveal the budget ceiling.
+- **Nuume** (daily nutrition gummy sachet, India; the brief may be written "Nuoria"): nutrition / gut health / fitness / wellness creators
+  whose audience is busy urban professionals aged 24-40. Competitors are Wellbeing Nutrition, OZiva and Supply6: note any creator who already
+  promotes them and flag it to the user. Offer: 1 Reel + 1 Story + usage rights to run the Reel as a paid ad (it may also go on the website).
+  **Open conflict to resolve:** `notes` ask for micro creators 7k-46k, but the saved `maxFollowers` is 10,000 and only a Nano rate (6k INR)
+  is set. Confirm the real range and rates for Micro before widening the search or quoting anyone above 10k followers.
+- Any other client: apply rules 1-6 the same way; add a short entry here only for requirements that are specific and likely to change.
+
 ## Conversations (replying to creators)
 Replies are handled by Claude via Claude in Chrome, on a schedule (every ~15 min). The app stores the thread; Chrome only reads and types.
 
