@@ -25,28 +25,34 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
   const { briefs, creators, clients, dealBatches, outreach } = await db();
 
   // Client review: agreed deals waiting for a sheet, and the sheets already sent (last 60 days) with the client's answers.
-  const waiting = await readyDeals();
-  const batches = await dealBatches.find({ createdAt: { $gte: new Date(Date.now() - 60 * 864e5) } }).sort({ createdAt: -1 }).toArray();
-  const onSheet = await creators.find({ batchId: { $in: batches.map((b) => b._id!) } }).toArray();
-  const reviewClients = [...new Set([...waiting.keys(), ...batches.map((b) => String(b.clientId))])];
-  const reviewNames = new Map((await clients.find({ _id: { $in: reviewClients.map((i) => new ObjectId(i)) } }).toArray()).map((c) => [String(c._id), c]));
+  // Reads that don't depend on each other run together.
   const query = all ? {} : { status: { $ne: "archived" as const } };
+  const [waiting, batches, total] = await Promise.all([
+    readyDeals(),
+    dealBatches.find({ createdAt: { $gte: new Date(Date.now() - 60 * 864e5) } }).sort({ createdAt: -1 }).toArray(),
+    briefs.countDocuments(query),
+  ]);
+  const reviewClients = [...new Set([...waiting.keys(), ...batches.map((b) => String(b.clientId))])];
 
   const PAGE_SIZE = 15;
-  const total = await briefs.countDocuments(query);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(Math.max(1, Number(pageParam) || 1), totalPages);
 
-  const list = await briefs
-    .find(query)
-    .sort({ updatedAt: -1 })
-    .skip((currentPage - 1) * PAGE_SIZE)
-    .limit(PAGE_SIZE)
-    .toArray();
+  const [onSheet, reviewList, list] = await Promise.all([
+    creators.find({ batchId: { $in: batches.map((b) => b._id!) } }).toArray(),
+    clients.find({ _id: { $in: reviewClients.map((i) => new ObjectId(i)) } }).toArray(),
+    briefs.find(query).sort({ updatedAt: -1 }).skip((currentPage - 1) * PAGE_SIZE).limit(PAGE_SIZE).toArray(),
+  ]);
+  const reviewNames = new Map(reviewList.map((c) => [String(c._id), c]));
   const ids = list.flatMap((b) => b.shortlist.map((s) => s.creatorId));
-  const people = new Map((await creators.find({ _id: { $in: ids } }).toArray()).map((c) => [String(c._id), c]));
-  const cls = new Map((await clients.find({ _id: { $in: list.flatMap((b) => (b.clientId ? [b.clientId] : [])) } }).toArray()).map((c) => [String(c._id), c]));
-  const queuedIds = new Set((await outreach.find({ creatorId: { $in: ids }, channel: "ig", status: "queued" }).toArray()).map((o) => String(o.creatorId)));
+  const [peopleList, clientList, queuedList] = await Promise.all([
+    creators.find({ _id: { $in: ids } }).toArray(),
+    clients.find({ _id: { $in: list.flatMap((b) => (b.clientId ? [b.clientId] : [])) } }).toArray(),
+    outreach.find({ creatorId: { $in: ids }, channel: "ig", status: "queued" }).toArray(),
+  ]);
+  const people = new Map(peopleList.map((c) => [String(c._id), c]));
+  const cls = new Map(clientList.map((c) => [String(c._id), c]));
+  const queuedIds = new Set(queuedList.map((o) => String(o.creatorId)));
   const order = (s: BriefDoc["status"]) => (s === "awaiting_approval" ? 0 : s === "failed" ? 1 : 2);
   list.sort((a, z) => order(a.status) - order(z.status));
 

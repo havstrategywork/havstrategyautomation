@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { db } from "./db";
 import { hashPassword, verifyPassword } from "./password";
 import { roleOf } from "./roles";
@@ -26,7 +27,9 @@ export async function sessionFor(token?: string) {
   return u ? { id: u._id!, username: u.username, email: u.email ?? null, role: roleOf(u.role) } : null; // role is read fresh each request, so a change applies at once
 }
 
-export const currentUser = async () => sessionFor((await cookies()).get(COOKIE)?.value); // only the root layout calls this
+// cache(): within one page render the layout and the page share a single lookup. Nothing is kept between requests; the proxy, route handlers
+// and server actions look the session up afresh, so a logout or a role change still applies at once.
+export const currentUser = cache(async () => sessionFor((await cookies()).get(COOKIE)?.value));
 
 export async function endSession(token?: string) {
   if (token) await (await db()).sessions.deleteOne({ tokenHash: sha(token) });

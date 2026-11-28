@@ -226,6 +226,10 @@ The three scheduled prompts live in `lib/prompts.ts` and are shown, with the rea
 4. The server hands out nothing while paused (`/api/outreach/next`, `/api/messages/next` return empty), so don't try to send anyway.
 The dashboard "Worker" card shows the last run; if it says "No recent run" the schedule has stopped.
 
+## Hosting and speed
+Vercel functions run in `bom1` (Mumbai, `vercel.json`) because the MongoDB cluster is in AWS `ap-south-1`: if the database moves, move the region with it.
+Pages and API answers are `no-store`; only built files and the logo are cached (`next.config.ts`).
+
 ## Dashboard login
 The UI needs a login (`proxy.ts`): DB-backed sessions (7 days, 24h idle, revocable on logout), scrypt-hashed password in the `users` collection, account lockout after 10
 wrong passwords (5 min, doubling, max 1h), per-IP limit, CSRF origin check, security headers (`next.config.ts`). `/api/*` is NOT behind the login: workers use the Bearer

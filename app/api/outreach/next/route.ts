@@ -14,12 +14,12 @@ export async function GET(req: Request) {
   const limit = Number(new URL(req.url).searchParams.get("limit")) || Infinity; // batch size for this run
   await enqueueDueFollowups(); // follow-ups ride the same queue and the same daily cap
   const { outreach, creators } = await db();
-  const ranks = await priorityRanks();
-  const sent = await sentToday("ig");
+  const [ranks, sent] = await Promise.all([priorityRanks(), sentToday("ig")]);
   const remaining = Math.max(0, IG_CAP - sent);
   const queued = await outreach.find({ channel: "ig", status: "queued" }).sort({ createdAt: 1 }).limit(500).toArray();
+  const people = new Map((queued.length ? await creators.find({ _id: { $in: queued.map((o) => o.creatorId) } }).toArray() : []).map((c) => [String(c._id), c]));
   const all = (await Promise.all(queued.map(async (o) => {
-    const c = await creators.findOne({ _id: o.creatorId });
+    const c = people.get(String(o.creatorId)) ?? null;
     if (o.kind === "followup" && (await conversationActive(c))) { // a conversation started after this was queued: drop it, never hand it to the sender
       await outreach.updateOne({ _id: o._id }, { $set: { status: "failed", error: "conversation active" } });
       return null;
